@@ -2,9 +2,10 @@
 #define __DRIVER_VGA_H
 
 #include <types.h>
+#include <mm.h>
 
 // Define the text mode window
-#define VGA_START 0xB8000
+#define VGA_START KPHYS_ADDR(0xB8000)
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 #define VGA_EXTENT 80 * 25

@@ -19,6 +19,9 @@ void *memset(void *dest, u8_t value, size_t n);
 
 void reverse(char *str);
 int itoa(s64_t value, char *str, u64_t base);
-char *ljust(char *str, size_t n);
+int utoa(u64_t value, char *str, u64_t base);
+char *ljust(char *str, size_t n, char pad_char);
+
+void ptr_to_hex(void *ptr, char *buf);
 
 #endif

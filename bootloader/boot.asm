@@ -10,10 +10,15 @@
 ; 16-bit Mode
 [bits 16]
 
-NUM_SECTORS_TO_LOAD: equ 17
+NUM_EXTRA_BOOTLOADER_SECTORS: equ 2
 
-; 0x6000 should be available to store the memory map
-MEMORY_MAP_BASE: equ 0x6000
+; 0x400 will store the number of sectors loaded and the base address of the kernel
+; The kernel can use this when bootstrapping memory early on
+KERNEL_MEMSPEC_BASE: equ 0x400
+KERNEL_START: equ 0x8200
+
+; 0x500 should be available to store the memory map
+MEMORY_MAP_BASE: equ 0x500
 
 ; Initialize the base pointer and the stack pointer
 ; The initial values should be fine for what we've done so far,
@@ -26,15 +31,45 @@ mov sp, bp
 ; to a specific location in memory
 mov byte[boot_drive], dl
 
+; Load other bootloader sectors
 mov bx, 0x7E00 ; es:bx = 0x0000:0x9000 = 0x09000
-mov dh, NUM_SECTORS_TO_LOAD ; read next disk sectors
+mov cl, 0x2 ; Starting Sector
+mov dh, NUM_EXTRA_BOOTLOADER_SECTORS ; read next disk sectors
 ; the bios sets 'dl' for our boot disk number
 ; if you have trouble, use the '-fda' flag: 'qemu -fda file.bin'
 call disk_load
 
+mov bx, loading_kernel
+call print_bios
+
+mov bx, 0x8200
+call print_hex_bios
+
+mov bx, nl
+call print_bios
+
+mov bx, KERNEL_START - 0x200
+add cl, NUM_EXTRA_BOOTLOADER_SECTORS - 1
+
+kernel_load_loop:
+    add bx, 0x200
+    add cl, 1
+    mov dh, 1
+    call disk_load
+
+    cmp ax, 0
+    je kernel_load_loop
+
+mov [KERNEL_MEMSPEC_BASE], bx
+
 call load_memory_map
 
-call elevate_bios 
+call elevate_bios
+
+loading_kernel:
+db `Loading Kernel at `, 0
+nl:
+db `\r\n`, 0
 
 ; Infinite Loop
 bootsector_hold:
@@ -50,9 +85,6 @@ jmp $               ; Infinite loop
 
 ; DATA STORAGE AREA
 
-; String Message
-msg_hello_world:                db `\r\nHello World, from the BIOS!\r\n`, 0
-
 ; Boot drive storage
 boot_drive:                     db 0x00
 
@@ -64,19 +96,13 @@ dw 0xAA55
 
 bootsector_extended:
 
-message_test: db `\r\nLoaded Sector 2\r\n`, 0
+[bits 32]
 
 begin_protected:
-
-[bits 32]
 
 call clear_protected
 
 call detect_lm_protected
-
-; Test VGA-style print function
-mov esi, protected_alert
-call print_protected
 
 call init_pt_protected
 
@@ -97,13 +123,10 @@ vga_start:                  equ 0x000B8000
 vga_extent:                 equ 80 * 25 * 2             ; VGA Memory is 80 chars wide by 25 chars tall (one char is 2 bytes)
 style_wb:                   equ 0x0F
 
-; Define messages
-protected_alert:                 db `64-bit long mode supported`, 0
-
 ; Fill with zeros to the end of the sector
 times 512 - ($ - bootsector_extended) db 0x00
 
-; Long mode code written in sector 3
+; Long mode code written in sector 4
 begin_long_mode:
 
 [bits 64]
@@ -115,7 +138,7 @@ mov rdi, style_blue
 mov rsi, long_mode_note
 call print_long
 
-call kernel_start
+call KERNEL_START
 
 jmp $
 
@@ -124,6 +147,5 @@ jmp $
 
 long_mode_note:                 db `Now running in fully-enabled, 64-bit long mode!`, 0
 style_blue:                     equ 0x1F
-kernel_start: equ 0x8200
 
 times 512 - ($ - begin_long_mode) db 0x00

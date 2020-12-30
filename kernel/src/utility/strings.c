@@ -135,15 +135,17 @@ int itoa(s64_t value, char *str, u64_t base) {
     return 1;
 }
 
-char *ljust(char *str, size_t n) {
+char *ljust(char *str, size_t n, char pad_char) {
     // Justify a numeric string with 0s
     // We'll assume the buffer is long enough
     size_t length = strlen(str);
 
     if (length < n) {
         size_t pad = n - length;
-        char *last = str + length - 1;
-        char *shifted = str + length + pad - 1;
+        
+        // Shift everything including the null terminator
+        char *last = str + length;
+        char *shifted = str + length + pad;
 
         // Shift the string right by `pad` to make room for zeros
         while (last >= str) {
@@ -151,9 +153,18 @@ char *ljust(char *str, size_t n) {
         }
 
         for (size_t i = 0; i < pad; ++i) {
-            str[i] = '0';
+            str[i] = pad_char;
         }
     }
 
     return str;
+}
+
+void ptr_to_hex(void *ptr, char *buf) {
+    buf[0] = '0';
+    buf[1] = 'x';
+    
+    itoa((s64_t)ptr, buf + 2, 16);
+
+    ljust(buf + 2, 12, '0');
 }

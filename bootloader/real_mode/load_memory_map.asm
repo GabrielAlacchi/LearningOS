@@ -57,6 +57,4 @@ load_memory_map_done:
         ret
 
 
-
-; The actual size is 24 but we'd like 64 bit alignment so we'll use a multiple of 8
 MEMORY_MAP_ENTRY_SIZE: equ 24
