@@ -12,9 +12,6 @@
 
 NUM_EXTRA_BOOTLOADER_SECTORS: equ 2
 
-; 0x400 will store the number of sectors loaded and the base address of the kernel
-; The kernel can use this when bootstrapping memory early on
-KERNEL_MEMSPEC_BASE: equ 0x400
 KERNEL_START: equ 0x8200
 
 ; 0x500 should be available to store the memory map
@@ -59,8 +56,6 @@ kernel_load_loop:
 
     cmp ax, 0
     je kernel_load_loop
-
-mov [KERNEL_MEMSPEC_BASE], bx
 
 call load_memory_map
 

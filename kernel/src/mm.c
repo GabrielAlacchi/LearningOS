@@ -1,4 +1,17 @@
+#include <cpu/msr.h>
+#include <driver/vga.h>
 #include <mm.h>
+#include <mm/phys_alloc.h>
+
+void mm_init() {
+    println("Enabling EFER.NXE for execution protection");
+
+    // Enable EFER.NXE bit in EFER MSR.
+    enable_paging_protection_bits();
+
+    // Initialize Physical Allocator
+    phys_alloc_init();
+}
 
 virt_addr_t phys_to_kvirt(phys_addr_t phys_addr) {
     return KPHYS_ADDR(phys_addr);
@@ -44,6 +57,6 @@ phys_addr_t virt_to_phys(virt_addr_t virt_addr) {
         return NULL;
     }
 
-    const phys_addr_t page_base_addr = kphys_addr_for_entry(pt_entry);
+    const virt_addr_t page_base_addr = kphys_addr_for_entry(pt_entry);
     return (phys_addr_t)((u64_t)page_base_addr + (u64_t)virt_addr & 0xFFF);
 }

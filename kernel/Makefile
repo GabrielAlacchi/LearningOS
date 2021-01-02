@@ -1,8 +1,8 @@
 # Set the C compiler and debugger
-CC = clang
-GDB = gdb 
+CC = x86_64-elf-gcc
+GDB = gdb
 
-LD = ld.lld
+LD = x86_64-elf-ld
 ASM = nasm
 
 INC = -Iinclude/
@@ -12,8 +12,8 @@ ASM_SRC = $(shell find . -type f -name "*.asm")
 # CRITICAL: assembly must be linked first
 OBJ = ${ASM_SRC:.asm=.o} ${SRC:.c=.o} 
 
-CCFLAGS = -ggdb -c -ffreestanding -target x86_64-none-elf -mno-red-zone
-LDFLAGS = -Ttext 0x8200
+CCFLAGS = -ggdb -c -ffreestanding -mno-red-zone -fno-pic
+LDFLAGS = -Tkernel.ld
 LDFLAGS_BIN = ${LDFLAGS} --oformat binary
 ASFLAGS = -f elf64
 

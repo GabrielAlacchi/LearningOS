@@ -4,14 +4,12 @@
 #include <types.h>
 #include <mm.h>
 
+#include <driver/vga.h>
+
 // The location was set in the bootloader, see bootloader/boot.asm
 // We've identity mapped the first 2MB of memory for the kernel so it should
 // be accessible in kernel space.
 #define BOOT_MMAP_LOCATION KPHYS_ADDR(0x500)
-
-// The bootloader also writes the address of the end of the kernel code
-// at 0x400
-#define KERNEL_MEM_LIMIT_LOCATION KPHYS_ADDR(0x400)
 
 #define E820_USABLE_RAM 1
 #define E820_RESERVED 2
@@ -53,6 +51,7 @@ const phys_addr_t get_kernel_load_limit();
 // memory. The remainder will go to the buddy allocator for virtual memory allocation.
 
 physmem_region_t *load_physmem_regions();
-virt_addr_t reserve_physmem_region(u64_t num_pages);
+phys_addr_t reserve_physmem_region(u64_t num_pages);
+const int is_block_usable(phys_addr_t block_start, size_t num_bytes);
 
 #endif

@@ -41,3 +41,20 @@ u8_t bmp_set_bit(bitmap_t *bmp, const size_t index, u8_t value) {
     
     return 1;
 }
+
+u8_t bmp_toggle_bit(bitmap_t *bmp, const size_t index) {
+    const size_t byte_index = index / 8;
+    const u8_t bit_mask = 1 << (index % 8);
+
+    if (byte_index >= bmp->size_bytes) {
+        return 0;
+    }
+
+    const u8_t byte = bmp->base[byte_index];
+
+    if (byte & bit_mask) {
+        bmp->base[byte_index] &= ~bit_mask;
+    } else {
+        bmp->base[byte_index] |= bit_mask;
+    }
+}
