@@ -13,7 +13,15 @@ buddy_allocator_t *get_allocator();
 // Initializes the physical page allocator
 void phys_alloc_init();
 
-phys_addr_t phys_alloc(u8_t order);
-void phys_free(phys_addr_t block_addr, u8_t order);
+// Allocate a physical block of size num_pages. 
+// Returns NULL if num_pages > 2^MAX_ORDER. The caller
+// should remember the size of the allocation for freeing the memory later on.
+phys_addr_t phys_alloc(u8_t num_pages);
+
+// Free a physical block of size num_pages.
+void phys_free(phys_addr_t block_addr, u8_t num_pages);
+
+// Shrinks a physical block to target_size.
+void phys_block_shrink(phys_addr_t block_addr, u8_t block_size, u8_t target_size);
 
 #endif

@@ -323,3 +323,58 @@ void buddy_free_block(buddy_allocator_t *allocator, phys_addr_t block_base, u8_t
     allocator->free_space_bytes += 1ul << (order + PAGE_ORDER);
     allocator->allocated_bytes -= 1ul << (order + PAGE_ORDER);
 }
+
+void buddy_shrink_block(buddy_allocator_t *allocator, phys_addr_t block_base, u8_t block_order, u8_t num_pages) {
+    // We make no assumptions about the alignment of block_base,
+    // get the block offset truncated to be the base of the block.
+    size_t block_offset = trunc_n_bits((block_base - allocator->base_addr) >> PAGE_ORDER, block_order);
+
+    u8_t block_size = 1 << block_order;
+    u8_t split_order = block_order - 1;
+
+    // This is essentially the unwound version of a recursive implementation.
+    // The base case is when the num_pages requested is equal to 2^block_order. This means we have nothing
+    // to shrink, so we don't do anything. 
+
+    // Else we then split the block in to two sub blocks, creating a freelist entry if necessary, then recursively
+    // shrink either the left or right block as needed.
+
+    // In the "tailcall" the num_pages, split_order and block_offset variables are re-used in the "next frame".
+    while (num_pages != (1 << (split_order + 1))) {
+        // Bitmap index for the pair of buddies we'll be splitting.
+        size_t bmp_index = buddy_bmp_index_of(block_offset, split_order);
+
+        // We need to split the block into two blocks of size (split_order). The question is do we need to create a free list node or not?
+        // If num_pages > 2^split_order then both sub blocks are going to be allocated, thus we don't need to create any free list entries,
+        // and set the bitmap bit to 0 (since the bit is the XOR of the states), and we go to the right block for the next allocation.
+        if (num_pages > (1 << split_order)) {
+            block_offset += (1 << split_order);
+
+            bmp_set_bit(&allocator->buddy_state_map, bmp_index, 0);
+
+            // Num pages has to be adjusted for the left side block which contains the first (1 << split_order) pages of the
+            // shrunk block.
+            num_pages -= (1 << split_order);
+        } else {
+            // The right hand block of the split is going to be freed, so we need to create a freelist entry and toggle the bitmap bit for this pair of buddies.
+            __allocate_freelist_entry(allocator, block_offset + (1 << split_order), split_order);
+
+            bmp_set_bit(&allocator->buddy_state_map, bmp_index, 1);
+
+            // We are going to continue splitting from the left hand side so we don't need to change block_offset.
+            // num pages remains unchanged in this case since it's fully encapsulated in the left hand block.
+        }
+
+        --split_order;
+    }
+
+    // Accounting
+    size_t bytes_freed = ((1ul << block_order) - num_pages) << PAGE_ORDER;
+    allocator->free_space_bytes += bytes_freed;
+    allocator->allocated_bytes -= bytes_freed;
+}
+
+void buddy_freelist_pool_expand(buddy_allocator_t *allocator, u8_t num_pages) {
+    allocator->freelist_pool_size += (num_pages << PAGE_ORDER) / sizeof(freelist_entry_t);
+    allocator->freelist_space_left += (num_pages << PAGE_ORDER) / sizeof(freelist_entry_t);
+}

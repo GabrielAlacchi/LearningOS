@@ -2,12 +2,15 @@
 #include <driver/vga.h>
 #include <mm.h>
 #include <mm/phys_alloc.h>
+#include <mm/vm.h>
 
 void mm_init() {
     println("Enabling EFER.NXE for execution protection");
 
     // Enable EFER.NXE bit in EFER MSR.
     enable_paging_protection_bits();
+
+    vm_init();
 
     // Initialize Physical Allocator
     phys_alloc_init();

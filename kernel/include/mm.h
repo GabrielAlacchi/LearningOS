@@ -3,7 +3,7 @@
 
 #include <types.h>
 
-typedef void *virt_addr_t;
+typedef void * virt_addr_t;
 typedef size_t phys_addr_t;
 
 #define PAGE_SIZE  0x1000
@@ -32,6 +32,31 @@ typedef size_t phys_addr_t;
 #define PT_HUGEPAGE            1ul << 7
 #define PT_GLOBAL              1ul << 8
 #define PT_NO_EXECUTE          1ul << 63
+
+// Custom Page Table Flags (bits 9-11 and 52-62 are free for use)
+
+// These bits are used when cleaning up a processes' entire virtual address space.
+// When allocating physical memory we need to remember the continguous number of pages
+// of the allocation. The first entry of any PT will have these bits set to store this metadata 
+// PT_PAGE_AHEAD indicates that there is another page table at addr + 0x1000 that was allocated
+// as part of the same allocation. PT_PAGE_BEHIND does the same for addr - 0x1000. PT_EARLY_ALLOC
+// indicates that this page table was allocated by reserve_physmem_pages and not by the buddy allocator.
+#define PT_PAGE_AHEAD          1ul << 9
+#define PT_PAGE_BEHIND         1ul << 10
+#define PT_EARLY_ALLOC         1ul << 11
+
+// These bits are used similarly to how PT_PAGE_AHEAD and PT_PAGE_BEHIND are used, except they convey information about the allocation
+// of the mapped data pages and not the page tables themselves.
+#define PT_DATA_PAGE_AHEAD      1ul << 54
+#define PT_DATA_PAGE_BEHIND     1ul << 55
+
+// Bit 56 indicates that the physical data pointed to by the current PT entry was allocated by 
+// reserve_physmem_pages rather than the buddy allocator
+#define PT_DATA_EARLY_ALLOC     1ul << 56
+
+// This bit is set for PML4T entries whenever they are "global" in the sense that all kernel processes
+// should share this same entry. They won't get deleted when a process is freed.
+#define PT_KERNEL_GLOBAL        1ul << 57
 
 typedef u64_t pt_entry_t;
 
@@ -81,6 +106,12 @@ static inline size_t pdt_offset(virt_addr_t addr) {
 
 static inline size_t pt_offset(virt_addr_t addr) {
     return ((size_t)addr >> 12) & 0x1FF;
+}
+
+// Offset at a particular height in the VM page table tree. Height = 3 is the PML4T,
+// Height = 0 is the PT.
+static inline size_t height_offset(virt_addr_t addr, u8_t height) {
+    return ((size_t)addr >> (12 + height * 9)) & 0x1FF;
 }
 
 #endif

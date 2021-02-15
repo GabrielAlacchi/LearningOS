@@ -112,8 +112,22 @@ size_t buddy_bmp_size_bits(size_t num_pages);
 
 buddy_prealloc_vector buddy_estimate_pool_size(size_t num_pages);
 
+// Initialize the buddy allocator. 
 buddy_allocator_t *buddy_init(buddy_memory_pool pool, phys_addr_t start_addr, phys_addr_t end_addr);
+
+// Extends the freelist pool by a number of pages. It doesn't actually perform the allocation, it's the responsibility
+// of the caller to assert that the virtual memory has been mapped correctly.
+void buddy_freelist_pool_expand(buddy_allocator_t *allocator, u8_t num_pages);
+
+// Allocator a block of the specified order. The caller should remember what order the block is
+// in order to free the block correctly. Returns the base address of the block.
 phys_addr_t buddy_alloc_block(buddy_allocator_t *allocator, u8_t order);
+
+// Free a block given the base of the block and the order of the block.
 void buddy_free_block(buddy_allocator_t *allocator, phys_addr_t block_base, u8_t order);
+
+// Shrinks an allocated block of a given order to a target number of pages. 
+// Num pages should be strictly less than 2^(block_order). 
+void buddy_shrink_block(buddy_allocator_t *allocator, phys_addr_t block_base, u8_t block_order, u8_t num_pages);
 
 #endif
