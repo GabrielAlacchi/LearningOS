@@ -2,31 +2,68 @@ ENTRY(_start)
 
 SECTIONS
 {
-  . = 0x8200;
+  KERNEL_VMA = 0xFFFFFFFF80000000;
 
-  /* 4K of code */
-  .text : {
-      *(.text)
-      *(.text.*)
+  . = 1M;
+  __KERNEL_PHYSICAL_START = .;
+
+  .multiboot : {
+    ../bootloader/bootstrap.o (.multiboot)
   }
 
-  /* 4K of Read-only data */
-  .rodata : ALIGN(0x1000)
+  .boottext : {
+    ../bootloader/bootstrap.o (.text)
+  }
+  .bootrodata : {
+    ../bootloader/bootstrap.o (.rodata)
+  }
+  .bootdata : {
+    ../bootloader/bootstrap.o (.data)
+  }
+  .bootbss : {
+    ../bootloader/bootstrap.o (pages.bss)
+  }
+
+  . = ALIGN(0x1000);
+  _boot_end = .;
+
+  . += KERNEL_VMA;
+  __KERNEL_VIRTUAL_START = .;
+  .text : AT(_boot_end)
   {
-      *(.rodata*)
+    *(.multiboot)
+    *(.text)
   }
 
-  /* 4K of Read-write initialized data. */
-  .data : ALIGN(0x1000)
+  . = ALIGN(0x1000);
+
+  .eh_frame : AT ( (LOADADDR (.text) + SIZEOF (.text) + 0xFFF) & 0xFFFFFFFFFFFFF000 ) {
+    *(.eh_frame*)
+  }
+
+  . = ALIGN(0x1000);
+
+  .rodata : AT ( (LOADADDR (.eh_frame) + SIZEOF (.eh_frame) + 0xFFF) & 0xFFFFFFFFFFFFF000 )
   {
-      *(.data*)
+    *(.rodata)
   }
 
-  /* 4K of Read-write uninitialized data. */
-  .bss : ALIGN(0x1000)
+  . = ALIGN(0x1000);
+
+  .data : AT ( (LOADADDR (.rodata) + SIZEOF (.rodata) + 0xFFF) & 0xFFFFFFFFFFFFF000 )
   {
-      *(.bss*)
+    *(.data)
   }
 
-  __KERNEL_END = .;
+  . = ALIGN(0x1000);
+
+  .bss : AT ( (LOADADDR (.data) + SIZEOF (.data) + 0xFFF) & 0xFFFFFFFFFFFFF000 )
+  {
+    *(COMMON)
+    *(.bss)
+  }
+
+  __KERNEL_VIRTUAL_END = .;
+
+  __KERNEL_PHYSICAL_END = (LOADADDR (.bss) + SIZEOF (.bss) + 0xFFF) & 0xFFFFFFFFFFFFF000;
 }

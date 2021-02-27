@@ -48,7 +48,7 @@ phys_addr_t virt_to_phys(virt_addr_t virt_addr) {
     }
 
     if (pdt_entry & PT_HUGEPAGE) {
-        return (phys_addr_t)((u64_t)phys_addr_for_entry(pdt_entry) + (u64_t)virt_addr & 0x1FFFFF);
+        return (phys_addr_t)((u64_t)phys_addr_for_entry(pdt_entry) + ((u64_t)virt_addr & 0x1FFFFF));
     }
 
     const u64_t pt_offset = ((u64_t)virt_addr >> 12) & 0x1FF;
@@ -61,5 +61,5 @@ phys_addr_t virt_to_phys(virt_addr_t virt_addr) {
     }
 
     const virt_addr_t page_base_addr = kphys_addr_for_entry(pt_entry);
-    return (phys_addr_t)((u64_t)page_base_addr + (u64_t)virt_addr & 0xFFF);
+    return (phys_addr_t)((u64_t)page_base_addr + ((u64_t)virt_addr & 0xFFF));
 }

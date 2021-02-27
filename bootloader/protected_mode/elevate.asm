@@ -14,7 +14,7 @@ elevate_protected:
     mov cr0, eax
 
     lgdt [gdt_64_descriptor]
-    jmp code_seg_64:init_lm
+    jmp code_seg_64:init_lm ; Far jump to clear the processor pipeline
 
 init_lm:
     cli
@@ -25,4 +25,4 @@ init_lm:
     mov gs, ax                    ; Set the G-segment to the A-register.
     mov ss, ax                    ; Set the stack segment to the A-register.
 
-    jmp begin_long_mode
+    jmp bootstrap_kernel

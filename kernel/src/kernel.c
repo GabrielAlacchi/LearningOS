@@ -1,4 +1,3 @@
-
 #include <cpu/isr.h>
 #include <types.h>
 #include <mm.h>
@@ -9,8 +8,6 @@
 #include <driver/vga.h>
 
 int main() {
-    char buf[20];
-
     set_cursor_pos(0, 0);
     clearwin(COLOR_WHT, COLOR_BLK);
         

@@ -6,7 +6,7 @@
 #define MAX(a, b) (a > b ? a : b)
 #define MIN(a, b) (a < b ? a : b)
 
-#define MASK_FOR_FIRST_N_BITS(n) ((1ul << n) - 1)
+#define MASK_FOR_FIRST_N_BITS(n) ((1ul << (n)) - 1)
 
 static inline size_t round_up_shift_right(size_t x, u8_t shift) {
     size_t shifted = x >> shift;
@@ -19,11 +19,11 @@ static inline size_t round_up_shift_right(size_t x, u8_t shift) {
 }
 
 static inline u8_t bit_order(u32_t x) {
-    u32_t leading_zeros = __builtin_clz(x);
+    s32_t leading_zeros = __builtin_clz(x);
     
     u8_t order = 31 - leading_zeros;
 
-    if (x == (1 << order)) {
+    if (x == (1u << order)) {
         return order;
     } else {
         return order + 1;

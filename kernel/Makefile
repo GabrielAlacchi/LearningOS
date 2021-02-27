@@ -1,35 +1,37 @@
 # Set the C compiler and debugger
-CC = x86_64-elf-gcc
+CC = gcc
 GDB = gdb
 
-LD = x86_64-elf-ld
+LD = ld
 ASM = nasm
 
-INC = -Iinclude/
+INC = -Iinclude/ -Ivendor/
 SRC = $(shell find . -type f -name "*.c")
 ASM_SRC = $(shell find . -type f -name "*.asm")
 
 # CRITICAL: assembly must be linked first
-OBJ = ${ASM_SRC:.asm=.o} ${SRC:.c=.o} 
+OBJ = ${ASM_SRC:.asm=.o} ${SRC:.c=.o} ../bootloader/bootstrap.o
 
-CCFLAGS = -ggdb -c -ffreestanding -mno-red-zone -fno-pic
-LDFLAGS = -Tkernel.ld
-LDFLAGS_BIN = ${LDFLAGS} --oformat binary
+CCFLAGS = -ggdb -nostdinc -nostdlib -ffreestanding -g -Wall -Wextra -I. -MMD -mno-red-zone -mcmodel=kernel -fno-pie
+LDFLAGS = -Tkernel.ld -melf_x86_64
+LDFLAGS_BIN = ${LDFLAGS}
 ASFLAGS = -f elf64
+DFILES = $(patsubst %.o,%.d,$(OBJ))
 
-all: kernel kernel.elf
+all: kernel
 
-kernel: ${OBJ}
-	${LD} -o $@ ${LDFLAGS_BIN} $^
+../bootloader/bootstrap.o:
+	make -C ../bootloader
 
-kernel.elf: ${OBJ}
-	${LD} -o $@ ${LDFLAGS} $^
+kernel: ${OBJ} kernel.ld Makefile
+	${LD} -o $@ ${LDFLAGS} ${OBJ}
 
 %.o: %.c
-	${CC} ${CCFLAGS} ${INC} -o $@ $^
+	${CC} -c ${CCFLAGS} ${INC} -o $@ $^
 
 %.o: %.asm
 	${ASM} $< ${ASFLAGS} -o $@
 
 clean:
-	rm -f kernel kernel.elf *.o **/*.o
+	find -name *.o -delete; find -name *.d -delete; rm kernel
+

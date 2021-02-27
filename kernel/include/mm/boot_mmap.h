@@ -3,13 +3,9 @@
 
 #include <types.h>
 #include <mm.h>
+#include <multiboot2.h>
 
 #include <driver/vga.h>
-
-// The location was set in the bootloader, see bootloader/boot.asm
-// We've identity mapped the first 2MB of memory for the kernel so it should
-// be accessible in kernel space.
-#define BOOT_MMAP_LOCATION KPHYS_ADDR(0x500)
 
 #define E820_USABLE_RAM 1
 #define E820_RESERVED 2
@@ -28,12 +24,6 @@
     Refer to https://wiki.osdev.org/Detecting_Memory_(x86)#BIOS_Function:_INT_0x15.2C_EAX_.3D_0xE820
     for more details
 */
-typedef struct __attribute__((packed)) {
-    phys_addr_t base_address;
-    u64_t region_length;
-    u32_t region_type;
-    u32_t acpi_reserved;
-} mm_boot_mmap_entry;
 
 typedef struct __physmem_region {
     phys_addr_t free_start;
@@ -41,10 +31,8 @@ typedef struct __physmem_region {
     struct __physmem_region *next_region;
 } physmem_region_t;
 
-const mm_boot_mmap_entry *get_boot_mmap();
-const u64_t boot_mmap_length();
 void print_boot_mmap();
-const phys_addr_t get_kernel_load_limit();
+phys_addr_t get_kernel_load_limit();
 
 // Determine the available regions that can be pre-allocated for 
 // certain drivers/systems which need fixed size pieces of physical 
@@ -52,6 +40,6 @@ const phys_addr_t get_kernel_load_limit();
 
 physmem_region_t *load_physmem_regions();
 phys_addr_t reserve_physmem_region(u64_t num_pages);
-const int is_block_usable(phys_addr_t block_start, size_t num_bytes);
+int is_block_usable(phys_addr_t block_start, size_t num_bytes);
 
 #endif

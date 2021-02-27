@@ -52,18 +52,18 @@ init_pt_protected:
     ; eax is the value to write, edi is the start address, and ecx is the
     ; number of repetitions to perform.
 
-    mov edi, 0x1000         ; Set the base address for rep stosd. Our page tables go from
-                            ; 0x1000 to 0x4FFF, so we want to start at 0x1000
+    mov edi, page_tables_begin  ; Set the base address for rep stosd. Our page tables go from
+                                ; 0x1000 to 0x4FFF, so we want to start at 0x1000
 
-    mov cr3, edi            ; Save the PML4T start address in cr3. This will save us time later
-                            ; because cr3 is what the CPU uses to locate the page table entries
+    mov cr3, edi                ; Save the PML4T start address in cr3. This will save us time later
+                                ; because cr3 is what the CPU uses to locate the page table entries
 
-    xor eax, eax            ; Set eax to 0. We want to zero out the page tables to start with.
+    xor eax, eax                ; Set eax to 0. We want to zero out the page tables to start with.
 
-    mov ecx, 5 * 1024       ; Repeat 5 * 1024 times. Since each page table is 4096 bytes, and we're
-                            ; writing 4 bytes each repetition, this will zero out all 5 page tables
+    mov ecx, 5 * 1024           ; Repeat 5 * 1024 times. Since each page table is 4096 bytes, and we're
+                                ; writing 4 bytes each repetition, this will zero out all 5 page tables
 
-    rep stosd               ; Now actually zero out the page table entries
+    rep stosd                   ; Now actually zero out the page table entries
 
     ; Set edi back to PML4T[0]
     mov edi, cr3
@@ -72,24 +72,24 @@ init_pt_protected:
     ; For mapping to huge pages we'll use flags 0x83 which toggles 7 along with the same flags as above.
 
     ; Set up the first entry of the page table for the first 2MB identity map
-    mov dword[edi], 0x2003 ; Set PML4T[0] to address 0x2000 which is P3[0] with flags 0x0003
+    mov dword[edi], page_tables_begin + 0x1003 ; Set PML4T[0] to address 0x2000 which is P3[0] with flags 0x0003
     add edi, 0xFF8 ; Move to PML4T[511]
-    mov dword[edi], 0x4003 ; Set PML4T[511] to address 0x4000 which is the other P3 for the 2GB mapping.
+    mov dword[edi], page_tables_begin + 0x3003 ; Set PML4T[511] to address 0x4000 which is the other P3 for the 2GB mapping.
     add edi, 0x8 ; Move to the P3[0]
-    mov dword[edi], 0x3003 ; Set P3[0] to address 0x3000 which is P2[0]
+    mov dword[edi], page_tables_begin + 0x2003 ; Set P3[0] to address 0x3000 which is P2[0]
     add edi, 0x1000 ; Move to the next page table
     mov dword[edi], 0x0083 ; Create a "huge page" at P2[0]
     add edi, 0x1FF0 ; Move to the latter P3 at index 510
-    mov dword[edi], 0x5003 ; Point to the page directory at 0x5000
+    mov dword[edi], page_tables_begin + 0x4003 ; Point to the page directory at 0x5000
     add edi, 0x8 ; Move the P3[511]
-    mov dword[edi], 0x6003 ; Point to the page directory at 0x6000
+    mov dword[edi], page_tables_begin + 0x5003 ; Point to the page directory at 0x6000
 
-    mov edi, 0x5000
+    mov edi, page_tables_begin + 0x4000
     xor ebx, ebx
 
     call fill_huge_pages
 
-    mov edi, 0x6000
+    mov edi, page_tables_begin + 0x5000
     mov ebx, 0x40000000
 
     call fill_huge_pages
@@ -111,7 +111,7 @@ init_pt_protected:
 ; ebx should store the base physical address the first huge page maps to
 fill_huge_pages:
     ; Set the flags for 10000011 (bit 7 is huge page)
-    or ebx, 0x83 
+    or ebx, 0x83
     mov ecx, 512 ; Do this operation 512 times
 
     page_fill_loop:
@@ -122,3 +122,9 @@ fill_huge_pages:
         loop page_fill_loop ; Decrement ecx and loop again
 
     ret
+
+SECTION pages.bss
+align 0x1000
+page_tables_begin:
+    resb 0x6000
+page_tables_end:
