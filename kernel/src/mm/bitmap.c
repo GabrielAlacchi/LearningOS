@@ -4,11 +4,7 @@
 
 void bmp_init(bitmap_t *bmp, u8_t *base, size_t size_bits) {
     bmp->base = base;
-    bmp->size_bytes = size_bits / 8;
-    
-    if (size_bits % 8 > 0) {
-        bmp->size_bytes += 1;
-    }
+    bmp->size_bytes = (size_bits + 7) / 8;
 
     memset(bmp->base, 0, bmp->size_bytes);
 }
@@ -54,7 +50,9 @@ u8_t bmp_toggle_bit(bitmap_t *bmp, const size_t index) {
 
     if (byte & bit_mask) {
         bmp->base[byte_index] &= ~bit_mask;
+        return 0;
     } else {
         bmp->base[byte_index] |= bit_mask;
+        return 1;
     }
 }

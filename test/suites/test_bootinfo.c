@@ -1,9 +1,16 @@
 #include <suite.h>
 #include <mm/boot_mmap.h>
+#include <utility/bootinfo.h>
 #include <cmocka.h>
 
 
 extern physmem_region_t region_pool[];
+
+
+static void test_boot_tag_by_type(void **state) {
+    assert_non_null(boot_tag_by_type(MULTIBOOT_TAG_TYPE_MMAP));
+    assert_null(boot_tag_by_type(MULTIBOOT_TAG_TYPE_NETWORK));
+}
 
 
 static void test_load_physmem_regions(void **state) {
@@ -40,6 +47,7 @@ static void test_reserve_region(void **state) {
 
 int main(void) {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_boot_tag_by_type),
         cmocka_unit_test(test_load_physmem_regions),
         cmocka_unit_test(test_reserve_region),
     };

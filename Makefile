@@ -20,6 +20,7 @@ os.iso: kernel/kernel bootloader/bootstrap.o iso/boot/grub bootloader/grub.cfg
 clean:
 	make -C kernel clean
 	make -C bootloader clean
+	make -C test clean
 	rm os.iso
 
 run: os.iso

@@ -5,7 +5,7 @@ INC = -I../kernel/include -I../kernel/vendor -I./include
 LIB = -lcmocka
 ASM = nasm
 
-KCCFLAGS = -nostdinc -nostdlib -ffreestanding -g -ggdb -Wall -MMD -mno-red-zone -DTESTSUITE
+KCCFLAGS = -g -ggdb -Wall -MMD -mno-red-zone -DTESTSUITE
 KSRC = $(shell find ../kernel -type f -name "*.c")
 SRC = $(shell find ./src -type f -name "*.c")
 
