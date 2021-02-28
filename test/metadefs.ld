@@ -1,0 +1,9 @@
+
+
+SECTIONS {
+  . = 0x100000;
+  __KERNEL_PHYSICAL_START = .;
+  __KERNEL_PHYSICAL_END = .;
+}
+
+INSERT BEFORE .text

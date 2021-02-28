@@ -27,3 +27,8 @@ run: os.iso
 
 debug:
 	qemu-system-x86_64 -cdrom os.iso -serial stdio -m 1024M -s -S
+
+test: FORCE
+	make -C test
+
+FORCE:

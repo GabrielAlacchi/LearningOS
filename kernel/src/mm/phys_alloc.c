@@ -44,19 +44,19 @@ buddy_memory_pool __prealloc_buddy_pool(_alloc_bounds_t *bounds) {
     size_t num_pages = (bounds->end - bounds->start) >> PAGE_ORDER;
     buddy_prealloc_vector pool_size_vector = buddy_estimate_pool_size(num_pages);
 
-    puts("Preallocating ");
+    kputs("Preallocating ");
     itoa(pool_size_vector.bitmap_and_struct_pages, buf, 10);
-    puts(buf);
-    println(" pages for the bitmap and structures");
+    kputs(buf);
+    kprintln(" pages for the bitmap and structures");
 
     phys_addr_t bmp_phys = reserve_physmem_region(pool_size_vector.bitmap_and_struct_pages);
     pool.bitmap_and_struct_pool = KPHYS_ADDR(bmp_phys);
 
-    puts("Preallocating ");
+    kputs("Preallocating ");
     itoa(pool_size_vector.freelist_pool_pages, buf, 10);
-    puts(buf);
-    println(" pages for the freelist");
-    println("Preallocation 2 pages for page tables for the freelist pool");
+    kputs(buf);
+    kprintln(" pages for the freelist");
+    kprintln("Preallocation 2 pages for page tables for the freelist pool");
 
     // Allocate freelist_pool_pages in the VMZONE_BUDDY_MEM zone to store the free list structures.
     pool.freelist_pool = vmzone_extend(pool_size_vector.freelist_pool_pages, VM_ALLOW_WRITE | VM_ALLOC_EARLY, VMZONE_BUDDY_MEM);
@@ -66,24 +66,24 @@ buddy_memory_pool __prealloc_buddy_pool(_alloc_bounds_t *bounds) {
 }
 
 void phys_alloc_init() {
-    println("Initializing Physical Allocator...");
+    kprintln("Initializing Physical Allocator...");
 
     _alloc_bounds_t bounds;
     __find_allocatable_region(&bounds);
 
     buddy_memory_pool pool = __prealloc_buddy_pool(&bounds);
 
-    // We need to recompute the allocatable region since our preallocations changed what's available.
-    println("Recomputing allocatable region");
+    // We need to recomkpute the allocatable region since our preallocations changed what's available.
+    kprintln("Recomkputing allocatable region");
     __find_allocatable_region(&bounds);
 
-    println("Initializing buddy allocator");
+    kprintln("Initializing buddy allocator");
     _allocator = buddy_init(pool, bounds.start, bounds.end);
 }
 
 static inline void __freespace_check() {
     if (_allocator->freelist_space_left < FREELIST_EXPANSION_THRESHOLD) {
-        println("Expanding freelist pool by one page");
+        kprintln("Expanding freelist pool by one page");
         vmzone_extend(1, VM_ALLOW_WRITE | VM_ALLOC_EARLY, VMZONE_BUDDY_MEM);
 
         buddy_freelist_pool_expand(_allocator, 1);

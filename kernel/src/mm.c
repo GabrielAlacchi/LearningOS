@@ -5,7 +5,7 @@
 #include <mm/vm.h>
 
 void mm_init() {
-    println("Enabling EFER.NXE for execution protection");
+    kprintln("Enabling EFER.NXE for execution protection");
 
     // Enable EFER.NXE bit in EFER MSR.
     enable_paging_protection_bits();

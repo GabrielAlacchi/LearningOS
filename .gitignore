@@ -57,3 +57,7 @@ kernel/kernel
 os.img
 
 iso
+
+*.test
+
+_build

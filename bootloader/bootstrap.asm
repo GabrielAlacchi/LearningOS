@@ -58,7 +58,7 @@ multiboot_info_ptr_32:
 
 [bits 64]
 
-extern main
+extern kernel_main
 extern KERNEL_VMA
 
 bootstrap_kernel:
@@ -70,7 +70,7 @@ bootstrap_kernel:
 
   mov [multiboot_info_ptr], rax
 
-  call main
+  call kernel_main
   jmp $
 
 SECTION .bss

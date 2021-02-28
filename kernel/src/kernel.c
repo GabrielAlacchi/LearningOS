@@ -7,19 +7,19 @@
 #include <utility/strings.h>
 #include <driver/vga.h>
 
-int main() {
+int kernel_main() {
     set_cursor_pos(0, 0);
     clearwin(COLOR_WHT, COLOR_BLK);
         
-    println("Kernel Initialized"); 
-    println("Setting up the IDT");
+    kprintln("Kernel Initialized"); 
+    kprintln("Setting up the IDT");
 
     isr_install();
-    puts("\n\n");
-    println("--- E820 Boot Map ---");
+    kputs("\n\n");
+    kprintln("--- E820 Boot Map ---");
     print_boot_mmap();
 
-    puts("\r\n\n");
+    kputs("\r\n\n");
 
     mm_init();
 

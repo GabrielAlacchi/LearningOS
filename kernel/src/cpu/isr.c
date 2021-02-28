@@ -48,7 +48,7 @@ static volatile interrupt_handler_t registered_handlers[IDT_ENTRIES];
 
 // Install the ISR's to the IDT
 void isr_install() {
-    println("Clearing out the IDT and handler registrations");
+    kprintln("Clearing out the IDT and handler registrations");
     clear_idt();
     memset(registered_handlers, 0, sizeof(interrupt_handler_t) * IDT_ENTRIES);
 
@@ -103,21 +103,21 @@ void isr_install() {
     set_idt_gate(47, (u64_t) _isr_47);
 
     // Remap the PIC controllers
-    println("Remapping the PIC Controllers and enabling all interrupts");
+    kprintln("Remapping the PIC Controllers and enabling all interrupts");
     pic_remap(IRQ_OFFSET1, IRQ_OFFSET2);
 
     // Disable programmable timer interrupts for now. We don't need them until we
     // start scheduling.
-    println("Masking all IRQ interrupts");
+    kprintln("Masking all IRQ interrupts");
     for (u8_t irq = 0; irq < 16; irq++) {
         pic_set_mask(irq);
     }
 
-    println("Loading the IDT");
+    kprintln("Loading the IDT");
     // Load the IDT to the CPU
     set_idt();
 
-    println("Enabling interrupts");
+    kprintln("Enabling interrupts");
     // Enable Interrupts
     __asm__ volatile("sti");
 }
@@ -154,10 +154,10 @@ void handle_irq(const isr_stack_frame *regs, u8_t irq_number, interrupt_handler_
         char buf[4];
         itoa(irq_number, buf, 10);
         
-        putstr("\rError: Received IRQ", COLOR_WHT, COLOR_RED);
-        putstr(buf, COLOR_WHT, COLOR_RED);
-        putstr("which has no registered handler", COLOR_WHT, COLOR_RED);
-        puts("\n");
+        kputstr("\rError: Received IRQ", COLOR_WHT, COLOR_RED);
+        kputstr(buf, COLOR_WHT, COLOR_RED);
+        kputstr("which has no registered handler", COLOR_WHT, COLOR_RED);
+        kputs("\n");
     } else {
         // Call the handler before sending EOI
         handler(regs);
@@ -177,10 +177,10 @@ void root_isr_handler(isr_stack_frame regs) {
         // This is an IRQ for IRQ 8-15
         handle_irq(&regs, regs.int_no - IRQ_OFFSET2, handler);
     } else if (handler == 0) {
-        putstr("\rError: Received interrupt with no handler: ", COLOR_WHT, COLOR_RED);
+        kputstr("\rError: Received interrupt with no handler: ", COLOR_WHT, COLOR_RED);
 
         const char *message = exception_messages[regs.int_no];
-        putstr(message, COLOR_WHT, COLOR_RED);
-        putstr("\n", COLOR_WHT, COLOR_BLK);
+        kputstr(message, COLOR_WHT, COLOR_RED);
+        kputstr("\n", COLOR_WHT, COLOR_BLK);
     }
 }

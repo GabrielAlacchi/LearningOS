@@ -17,7 +17,14 @@ typedef size_t phys_addr_t;
 // The first 2GB of physical memory is mapped into the high 2GB of the address space
 // like in Linux. This macro DRYs up the conversion from an address to this physical
 // address for kernel functions.
+
+#ifdef TESTSUITE
+extern u8_t __test_physical_mem[];
+#define KPHYS_ADDR(addr) (void*)(__test_physical_mem + (u64_t)addr)
+#else
 #define KPHYS_ADDR(addr) (void*)((u64_t)KERNEL_VMA + (u64_t)(addr))
+#endif
+
 #define ENTRY_ADDR_MASK ~(((u64_t)0xFFF << 52) + ((u64_t)0xFFF))
 
 #define KERNEL_PML4T KPHYS_ADDR(0x1000)

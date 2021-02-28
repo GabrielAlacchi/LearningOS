@@ -14,9 +14,9 @@ extern phys_addr_t __KERNEL_PHYSICAL_START;
 extern phys_addr_t __KERNEL_PHYSICAL_END;
 
 // TODO: Use SLAB allocation for this as well.
-physmem_region_t pool[12];
+physmem_region_t region_pool[12];
 
-static inline u32_t __num_mmap_entries(struct multiboot_tag_mmap *mmap_tag) {
+static inline u32_t __num_mmap_entries(const struct multiboot_tag_mmap *mmap_tag) {
     return (mmap_tag->size - sizeof(struct multiboot_tag_mmap)) / mmap_tag->entry_size;
 }
 
@@ -25,41 +25,41 @@ void print_boot_mmap() {
 
     char buf[20];
 
-    println("Base Address   | Region Length    | Region Type");
+    kprintln("Base Address   | Region Length    | Region Type");
 
     const u32_t num_entries = __num_mmap_entries(mmap_tag);
 
     for (const struct multiboot_mmap_entry *entry = mmap_tag->entries; entry - mmap_tag->entries < num_entries; ++entry) {
         ptr_to_hex(entry->addr, buf);
-        puts(buf);
+        kputs(buf);
 
-        puts(" | ");
+        kputs(" | ");
 
         itoa((s64_t)entry->len, buf, 10);
         ljust(buf, 16, ' ');
 
-        puts(buf);
+        kputs(buf);
 
-        puts(" | ");
+        kputs(" | ");
 
         switch (entry->type) {
         case E820_USABLE_RAM:
-            println("Free Space");
+            kprintln("Free Space");
             break;
         case E820_RESERVED:
-            println("Reserved");
+            kprintln("Reserved");
             break;
         case E820_ACPI_RECLAIMABLE:
-            println("ACPI Reclaimable");
+            kprintln("ACPI Reclaimable");
             break;
         case E820_ACPI_NVS:
-            println("ACPI NVS Memory");
+            kprintln("ACPI NVS Memory");
             break;
         case E820_BAD_MEM:
-            println("Bad Memory");
+            kprintln("Bad Memory");
             break;
         default:
-            println("Unknown Type");
+            kprintln("Unknown Type");
             break;
         }
     }
@@ -81,15 +81,15 @@ physmem_region_t *load_physmem_regions() {
     }
 
     // The first region will be loaded
-    phys_addr_t kernel_start = &__KERNEL_PHYSICAL_START;
-    phys_addr_t kernel_end = &__KERNEL_PHYSICAL_END;
+    phys_addr_t kernel_start = (phys_addr_t)&__KERNEL_PHYSICAL_START;
+    phys_addr_t kernel_end = (phys_addr_t)&__KERNEL_PHYSICAL_END;
 
     kernel_start = clamp_up_to_page(kernel_start);
 
     const struct multiboot_tag_mmap *mmap_tag = boot_tag_by_type(MULTIBOOT_TAG_TYPE_MMAP);
 
     // Start creating a linked list of regions after the base
-    physmem_region_t *current_region = pool;
+    physmem_region_t *current_region = region_pool;
     memset(current_region, 0, sizeof(physmem_region_t));
 
     const u32_t num_entries = __num_mmap_entries(mmap_tag);

@@ -50,19 +50,19 @@ void clearwin(const u8_t fg_color, const u8_t bg_color);
 
 
 // Print a character to the screen
-void putchar(const char character, const u8_t fg_color, const u8_t bg_color);
+void kputchar(const char character, const u8_t fg_color, const u8_t bg_color);
 
 // Print a string to the screen
-void putstr(const char *string, const u8_t fg_color, const u8_t bg_color);
+void kputstr(const char *string, const u8_t fg_color, const u8_t bg_color);
 
 // Print a string to the screen with default color config.
-static inline void puts(const char *string) {
-    putstr(string, COLOR_WHT, COLOR_BLK);
+static inline void kputs(const char *string) {
+    kputstr(string, COLOR_WHT, COLOR_BLK);
 }
 
-static inline void println(const char *string) {
-    putstr(string, COLOR_WHT, COLOR_BLK);
-    putstr("\n", COLOR_WHT, COLOR_BLK);
+static inline void kprintln(const char *string) {
+    kputstr(string, COLOR_WHT, COLOR_BLK);
+    kputstr("\n", COLOR_WHT, COLOR_BLK);
 }
 
 // Get the cursor position

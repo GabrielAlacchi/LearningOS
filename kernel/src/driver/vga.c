@@ -27,7 +27,7 @@ void clearwin(u8_t fg_color, u8_t bg_color) {
 }
 
 
-void putchar(const char character, const u8_t fg_color, const u8_t bg_color) {
+void kputchar(const char character, const u8_t fg_color, const u8_t bg_color) {
     u16_t position = get_cursor_pos();
 
     if (character == '\n'){
@@ -50,7 +50,7 @@ void putchar(const char character, const u8_t fg_color, const u8_t bg_color) {
     else if (character == '\t'){
         // Turn tab to 4 spaces
         for (u8_t i = 0; i < 4; i++){
-            putchar(' ', fg_color, bg_color);
+            kputchar(' ', fg_color, bg_color);
         }
         advance_cursor();
     }
@@ -69,9 +69,9 @@ void putchar(const char character, const u8_t fg_color, const u8_t bg_color) {
 }
 
 
-void putstr(const char *string, const u8_t fg_color, const u8_t bg_color) {
+void kputstr(const char *string, const u8_t fg_color, const u8_t bg_color) {
     while (*string != '\0') {
-        putchar(*string++, fg_color, bg_color);
+        kputchar(*string++, fg_color, bg_color);
     }
 }
 
