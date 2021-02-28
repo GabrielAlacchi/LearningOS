@@ -10,7 +10,7 @@ SRC = $(shell find . -type f -name "*.c")
 ASM_SRC = $(shell find . -type f -name "*.asm")
 
 # CRITICAL: assembly must be linked first
-OBJ = ${ASM_SRC:.asm=.o} ${SRC:.c=.o} ../bootloader/bootstrap.o
+OBJ = ${ASM_SRC:%.asm=_build/%.o} ${SRC:%.c=_build/%.o} ../bootloader/bootstrap.o
 
 CCFLAGS = -ggdb -nostdinc -nostdlib -ffreestanding -g -Wall -Wextra -I. -MMD -mno-red-zone -mcmodel=kernel -fno-pie
 LDFLAGS = -Tkernel.ld -melf_x86_64
@@ -26,12 +26,13 @@ all: kernel
 kernel: ${OBJ} kernel.ld Makefile
 	${LD} -o $@ ${LDFLAGS} ${OBJ}
 
-%.o: %.c
+_build/%.o: %.c
+	mkdir -p ${dir $@}
 	${CC} -c ${CCFLAGS} ${INC} -o $@ $^
 
-%.o: %.asm
+_build/%.o: %.asm
+	mkdir -p ${dir $@}
 	${ASM} $< ${ASFLAGS} -o $@
 
 clean:
-	find -name *.o -delete; find -name *.d -delete; rm kernel
-
+	rm kernel; rm -rf _build
