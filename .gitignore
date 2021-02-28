@@ -55,9 +55,11 @@ dkms.conf
 kernel/kernel
 
 os.img
+os.iso
 
 iso
 
 *.test
 
 _build
+
