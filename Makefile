@@ -3,10 +3,10 @@ all: os.iso
 kernel: kernel/kernel
 	@echo "\nKernel build complete...\n"
 
-bootloader/bootstrap.o:
+bootloader/bootstrap.o: FORCE
 	make -C bootloader
 
-kernel/kernel: bootloader/bootstrap.o
+kernel/kernel: bootloader/bootstrap.o FORCE
 	make -C kernel
 
 iso/boot/grub:
@@ -23,10 +23,10 @@ clean:
 	make -C test clean
 	rm os.iso
 
-run: os.iso
+run: os.iso FORCE
 	qemu-system-x86_64 -cdrom os.iso -serial stdio -m 1024M
 
-debug:
+debug: os.iso FORCE
 	qemu-system-x86_64 -cdrom os.iso -serial stdio -m 1024M -s -S
 
 test: FORCE

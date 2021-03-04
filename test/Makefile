@@ -18,12 +18,13 @@ CCFLAGS = -g -Wall -ggdb
 
 TEST_SUITE_SRCS = $(shell find ./suites -type f -name "*.c")
 TEST_SUITE_BINS = ${TEST_SUITE_SRCS:.c=.test}
+TEST_SUITE_MOCKS = $(TEST_SUITE_SRCS:.mocks=.c)
 
 
 .PRECIOUS: ${OBJ} ${KOBJ}
 .PHONY: run_tests
 
-all_tests: ${TEST_SUITE_BINS}
+all_tests: ${TEST_SUITE_BINS} ${TEST_SUITE_MOCKS}
 
 run_all: all_tests run_tests
 	for suite in ${TEST_SUITE_BINS}; do \

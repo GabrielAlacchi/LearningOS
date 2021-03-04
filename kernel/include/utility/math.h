@@ -58,4 +58,10 @@ static inline size_t trunc_n_bits(size_t x, u8_t n) {
     return x & (~MASK_FOR_FIRST_N_BITS(n));
 }
 
+// Aligns a pointer to a block of the specified alignment order (left shift)
+// by truncating the last N bits of the address.
+static inline void *aligndown(void *ptr, u8_t align_order) {
+    return (void*)((size_t)ptr & (~MASK_FOR_FIRST_N_BITS(align_order)));
+}
+
 #endif

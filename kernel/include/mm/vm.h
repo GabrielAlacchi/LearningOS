@@ -64,13 +64,13 @@ virt_addr_t vmzone_extend(u8_t pages, u8_t flags, u16_t vmzone);
 // from the contiguous zone
 int vmzone_shrink(u8_t pages, u16_t vmzone);
 
-// Allocate a fixed number of pages in a zone.
-// Useful for one off allocations of a given size like creating a new stack for
-// a kernel process.
-virt_addr_t vmalloc(u8_t pages, u8_t flags, u16_t vmzone);
+void _prepare_block_pt(const vmzone_t * zone, virt_addr_t base_pt_addr, page_table_t *pt);
 
-// Free the block of virtual memory starting from addr
-int vm_free(virt_addr_t addr);
+// Allocate a block in a VMZFLAG_ALLOC_BLOCK virtual memory zone.
+virt_addr_t vm_alloc_block(u8_t flags, u16_t vmzone);
+
+// Free a block in a VMZFLAG_ALLOC_BLOCK virtual memory zone.
+int vm_free_block(virt_addr_t addr, u16_t vmzone);
 
 // Directly map pages to a given base address so that they are virtually contiguous.
 // If pages is not a power of 2 then they are not necessarily physically contiguous.

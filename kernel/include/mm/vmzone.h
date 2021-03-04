@@ -24,18 +24,19 @@ each PML4T will point to the same space in these zones.
 // Zone which can only allocate contiguous blocks (like a HEAP).
 // If 1 only vmzone_extend is allowed. if 0 only direct mapping and vmalloc are allowed.
 #define VMZFLAG_CONTIGUOUS    1
-#define VMZFLAG_ALLOW_EXECUTE 1 << 1
+#define VMZFLAG_BLOCK_ALLOC   1 << 1
+#define VMZFLAG_ALLOW_EXECUTE 1 << 5
 
 // Has the zone been initialized? Are there page tables for the first 512 pages of the region?
 // No physical actually have to be mapped before this flag is set, there just needs to exist a
 // tree of page tables covering the first part of the region.
-#define VMZFLAG_INITIALIZED   1 << 2
+#define VMZFLAG_INITIALIZED   1 << 6
 
 // Zone for heap for small object allocations (kmalloc)
 #define VMZONE_KERNEL_HEAP 0x0
 
-// Zone for storing larger kernel allocations
-#define VMZONE_KERNEL_ALLOC 0x1
+// Zone for stack allocations
+#define VMZONE_KERNEL_STACK 0x1
 
 // Zone for storing safe data that needs to be mapped in with user space (even if its not accessible normally).
 // Of course with meltdown this data can be read but it's not sensitive.
@@ -43,18 +44,21 @@ each PML4T will point to the same space in these zones.
 // without needing a full CR3 change.
 #define VMZONE_USER_SHARED 0x2
 
-// Zone for storing buddy allocator structures
-#define VMZONE_BUDDY_MEM 0x3
+// Zone for slab allocations
+#define VMZONE_KERNEL_SLAB 0x3
 
-#define VMZONE_NUMBER_OF_ZONES 4
+// Zone for buddy memory
+#define VMZONE_BUDDY_MEM   0x4
 
-typedef struct
-{
+#define VMZONE_NUMBER_OF_ZONES 5
+
+typedef struct {
     virt_addr_t start_address;
     virt_addr_t end_address;
     virt_addr_t cursor_addr;
-    
+
     u8_t vm_flags;
+    u8_t block_order;
     u16_t flags;
 } vmzone_t;
 

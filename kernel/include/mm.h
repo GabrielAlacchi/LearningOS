@@ -30,15 +30,15 @@ extern u8_t __test_physical_mem[];
 #define KERNEL_PML4T KPHYS_ADDR(0x1000)
 
 #define PT_PRESENT             1ul
-#define PT_WRITABLE            1ul << 1
-#define PT_USER_ACCESSIBLE     1ul << 2
-#define PT_WRITE_THROUGH       1ul << 3
-#define PT_DISABLE_CACHE       1ul << 4
-#define PT_ACCESSED            1ul << 5
-#define PT_DIRTY               1ul << 6
-#define PT_HUGEPAGE            1ul << 7
-#define PT_GLOBAL              1ul << 8
-#define PT_NO_EXECUTE          1ul << 63
+#define PT_WRITABLE            (1ul << 1)
+#define PT_USER_ACCESSIBLE     (1ul << 2)
+#define PT_WRITE_THROUGH       (1ul << 3)
+#define PT_DISABLE_CACHE       (1ul << 4)
+#define PT_ACCESSED            (1ul << 5)
+#define PT_DIRTY               (1ul << 6)
+#define PT_HUGEPAGE            (1ul << 7)
+#define PT_GLOBAL              (1ul << 8)
+#define PT_NO_EXECUTE          (1ul << 63)
 
 // Custom Page Table Flags (bits 9-11 and 52-62 are free for use)
 
@@ -48,22 +48,27 @@ extern u8_t __test_physical_mem[];
 // PT_PAGE_AHEAD indicates that there is another page table at addr + 0x1000 that was allocated
 // as part of the same allocation. PT_PAGE_BEHIND does the same for addr - 0x1000. PT_EARLY_ALLOC
 // indicates that this page table was allocated by reserve_physmem_pages and not by the buddy allocator.
-#define PT_PAGE_AHEAD          1ul << 9
-#define PT_PAGE_BEHIND         1ul << 10
-#define PT_EARLY_ALLOC         1ul << 11
+#define PT_PAGE_AHEAD          (1ul << 9)
+#define PT_PAGE_BEHIND         (1ul << 10)
+#define PT_EARLY_ALLOC         (1ul << 11)
 
 // These bits are used similarly to how PT_PAGE_AHEAD and PT_PAGE_BEHIND are used, except they convey information about the allocation
 // of the mapped data pages and not the page tables themselves.
-#define PT_DATA_PAGE_AHEAD      1ul << 54
-#define PT_DATA_PAGE_BEHIND     1ul << 55
+#define PT_DATA_PAGE_AHEAD      (1ul << 54)
+#define PT_DATA_PAGE_BEHIND     (1ul << 55)
 
 // Bit 56 indicates that the physical data pointed to by the current PT entry was allocated by 
 // reserve_physmem_pages rather than the buddy allocator
-#define PT_DATA_EARLY_ALLOC     1ul << 56
+#define PT_DATA_EARLY_ALLOC     (1ul << 56)
 
 // This bit is set for PML4T entries whenever they are "global" in the sense that all kernel processes
 // should share this same entry. They won't get deleted when a process is freed.
-#define PT_KERNEL_GLOBAL        1ul << 57
+#define PT_KERNEL_GLOBAL        (1ul << 57)
+
+// This bit is set for freelist page table entries in which the 48 bits of offset specify an unsigned
+// offset from the kernel virtual address to the next free block in the zone. If this bit is set then that
+// offset is a negative number. This is easier than storing a 48 bit signed integer.
+#define PT_OFFSET_NEGATIVE      (1ul << 58)
 
 typedef u64_t pt_entry_t;
 
@@ -80,6 +85,22 @@ phys_addr_t virt_to_phys(virt_addr_t virt_addr);
 // 1. NXE bit in EFER MSR to allow execution protection on instruction fetches.
 // 2. Physical Allocator
 void mm_init();
+
+
+static inline size_t pt_alloc_flags(pt_entry_t entry) {
+    return entry & (PT_PAGE_AHEAD | PT_PAGE_BEHIND | PT_EARLY_ALLOC);
+}
+
+
+static inline virt_addr_t next_free_entry(pt_entry_t free_entry, virt_addr_t entry_addr) {
+    size_t offset = free_entry & ENTRY_ADDR_MASK;
+    
+    if (free_entry & PT_OFFSET_NEGATIVE) {
+        return entry_addr - offset;
+    } else {
+        return entry_addr + offset;
+    }
+}
 
 
 static inline virt_addr_t kphys_addr_for_entry(pt_entry_t entry) {
