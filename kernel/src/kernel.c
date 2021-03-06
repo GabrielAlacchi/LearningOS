@@ -5,6 +5,7 @@
 #include <mm/phys_alloc.h>
 #include <mm/vm.h>
 #include <mm/slab.h>
+#include <mm/kmalloc.h>
 #include <utility/strings.h>
 #include <driver/vga.h>
 
@@ -36,18 +37,14 @@ int kernel_main() {
 
     vmzone_shrink(72, VMZONE_KERNEL_HEAP);
 
-    kmem_cache_t cache;
-    slab_cache_init(&cache, sizeof(test_obj_t), 8);
-    slab_cache_reserve(&cache, 1024);
+    char *str = kmalloc(120);
+    str[0] = 'a';
+    str[1] = 'b';
+    str[2] = 0;
 
-    test_obj_t *objs[3];
-    objs[0] = slab_alloc(&cache);
-    objs[1] = slab_alloc(&cache);
-    objs[2] = slab_alloc(&cache);
+    kprintln(str);
 
-    slab_free(&cache, objs[2]);
-    slab_free(&cache, objs[1]);
-    slab_free(&cache, objs[0]);
+    kfree(str);
 
     return 0;
 }

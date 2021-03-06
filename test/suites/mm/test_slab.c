@@ -83,7 +83,7 @@ void __validate_cache_lists(kmem_cache_t *cache) {
 
 void test_slab_cache_init(void **state) {
     kmem_cache_t cache;
-    slab_cache_init(&cache, sizeof(test_obj_t), _Alignof(test_obj_t));
+    slab_cache_init(&cache, sizeof(test_obj_t), _Alignof(test_obj_t), 0);
     
     assert_int_equal(0, cache.align_padding);
     assert_int_equal(16, cache.obj_size);
@@ -110,7 +110,7 @@ void test_slab_cache_init(void **state) {
 
 void test_slab_alloc(void **state) {
     kmem_cache_t cache;
-    slab_cache_init(&cache, sizeof(test_obj_t), _Alignof(test_obj_t));
+    slab_cache_init(&cache, sizeof(test_obj_t), _Alignof(test_obj_t), 0);
 
     test_obj_t *obj = slab_alloc(&cache);
 
@@ -156,7 +156,7 @@ void test_slab_alloc(void **state) {
 
 void test_slab_free(void **state) {
     kmem_cache_t cache;
-    slab_cache_init(&cache, sizeof(test_obj_t), _Alignof(test_obj_t));
+    slab_cache_init(&cache, sizeof(test_obj_t), _Alignof(test_obj_t), 0);
 
     test_obj_t *objects[TEST_OBJS_PER_SLAB];
 

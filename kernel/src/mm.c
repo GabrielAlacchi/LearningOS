@@ -3,6 +3,7 @@
 #include <mm.h>
 #include <mm/phys_alloc.h>
 #include <mm/vm.h>
+#include <mm/kmalloc.h>
 
 void mm_init() {
     kprintln("Enabling EFER.NXE for execution protection");
@@ -14,6 +15,8 @@ void mm_init() {
 
     // Initialize Physical Allocator
     phys_alloc_init();
+
+    kmalloc_init();
 }
 
 virt_addr_t phys_to_kvirt(phys_addr_t phys_addr) {

@@ -4,7 +4,7 @@
 #include <utility/math.h>
 
 
-void slab_cache_init(kmem_cache_t *cache, u16_t obj_size, u16_t obj_align) {
+void slab_cache_init(kmem_cache_t *cache, u16_t obj_size, u16_t obj_align, u16_t cache_id) {
     cache->obj_size = obj_size;
     cache->obj_cell_size = (obj_size + obj_align - 1) & ~(obj_align - 1);
     cache->allocated_objects = 0;
@@ -12,6 +12,7 @@ void slab_cache_init(kmem_cache_t *cache, u16_t obj_size, u16_t obj_align) {
     cache->total_free_slabs = 0;
     cache->total_full_slabs = 0;
     cache->total_partial_slabs = 0;
+    cache->cache_id = cache_id;
 
     cache->objs_per_slab = (sizeof(slab_t) - sizeof(slab_header_t)) / cache->obj_cell_size;
     cache->slab_overhead = sizeof(slab_t) - (cache->objs_per_slab * cache->obj_cell_size);
@@ -28,6 +29,7 @@ static inline slab_t *__slab_create(const kmem_cache_t *const cache) {
     // At initialization, the first free object will be at cell 0
     new_slab->header.first_free_idx = 0;
     new_slab->header.free_count = cache->objs_per_slab;
+    new_slab->header.cache_id = cache->cache_id;
 
     slab_object_t *obj;
 

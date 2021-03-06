@@ -3,6 +3,7 @@
 
 #include <types.h>
 #include <mm.h>
+#include <utility/math.h>
 
 
 #define SLAB_ORDER 1
@@ -25,18 +26,21 @@ typedef struct __slab_object {
 typedef struct {
     // The next slab
     struct __slab *prev, *next;
-
-    // The cache which contains this slab.
-    struct __kmem_slab_cache *cache;
     
     // The first free object
     u16_t first_free_idx;
+    
     // Number of free objects
     u16_t free_count;
 
+    // A user supplied Cache ID which can be used by a higher level allocator like kmalloc which uses 
+    // multiple caches to correlate back to the correct cache. The SLAB subsystem ignores this value and just copies it
+    // wherever.
+    u16_t cache_id;
+
     // Since most allocated objects need to be 8 byte aligned anyways we can reserve 32 bits for future purposes at the end of the struct
     // to have it be a multiple of 8. 
-    u32_t reserved;
+    u16_t reserved;
 } slab_header_t;
 
 
@@ -55,6 +59,7 @@ typedef struct __kmem_slab_cache {
     u16_t total_full_slabs;
     u32_t allocated_objects;
     u16_t objs_per_slab;
+    u16_t cache_id;
 
     // How many bytes is wasted for header info + extra padding per slab (not including internal padding for alignment).
     u16_t slab_overhead;
@@ -65,7 +70,7 @@ typedef struct __kmem_slab_cache {
 } kmem_cache_t;
 
 // Initialize an object cache
-void slab_cache_init(kmem_cache_t *cache, u16_t obj_size, u16_t obj_align);
+void slab_cache_init(kmem_cache_t *cache, u16_t obj_size, u16_t obj_align, u16_t cache_id);
 
 // Reserve enough slabs up front for the provided number of objects.
 void slab_cache_reserve(kmem_cache_t *cache, u16_t num_objects);
@@ -75,5 +80,10 @@ void *slab_alloc(kmem_cache_t *cache);
 
 // Free an object.
 void *slab_free(kmem_cache_t *cache, void *ptr);
+
+static inline u16_t cache_id_for_alloc(void *ptr) {
+    slab_t *slab = aligndown(ptr, SLAB_ORDER + PAGE_ORDER);
+    return slab->header.cache_id;
+}
 
 #endif
