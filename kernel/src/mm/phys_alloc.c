@@ -9,7 +9,7 @@
 #define FREELIST_EXPANSION_THRESHOLD (MAX_ORDER + 1)
 
 
-static buddy_allocator_t *_allocator = NULL;
+buddy_allocator_t _allocator;
 
 typedef struct {
     phys_addr_t start;
@@ -17,7 +17,7 @@ typedef struct {
 } _alloc_bounds_t;
 
 buddy_allocator_t *get_allocator() {
-    return _allocator;
+    return &_allocator;
 }
 
 void __find_allocatable_region(_alloc_bounds_t *bounds) {
@@ -53,15 +53,20 @@ buddy_memory_pool __prealloc_buddy_pool(_alloc_bounds_t *bounds) {
     pool.bitmap_and_struct_pool = KPHYS_ADDR(bmp_phys);
 
     kputs("Preallocating ");
-    itoa(pool_size_vector.freelist_pool_pages, buf, 10);
+    itoa(pool_size_vector.freelist_pool_slabs, buf, 10);
     kputs(buf);
     kprintln(" pages for the freelist");
-    kprintln("Preallocation 2 pages for page tables for the freelist pool");
+    kprintln("Preallocating pages for the freelist cache");
 
-    // Allocate freelist_pool_pages in the VMZONE_BUDDY_MEM zone to store the free list structures.
-    pool.freelist_pool = vmzone_extend(pool_size_vector.freelist_pool_pages, VM_ALLOW_WRITE | VM_ALLOC_EARLY, VMZONE_BUDDY_MEM);
-    pool.freelist_pool_pages = pool_size_vector.freelist_pool_pages;
+    // The assumption here is that the blocks that are allocated in the zones at this point will be contiguous since these are
+    // the first ever allocations in this zone.
+    void *slab = vm_alloc_block(VM_ALLOC_EARLY | VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
+    for (u8_t i = 1; i < pool_size_vector.freelist_pool_slabs; ++i) {
+        vm_alloc_block(VM_ALLOC_EARLY | VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
+    }
 
+    pool.freelist_pool_slabs = pool_size_vector.freelist_pool_slabs;
+    pool.freelist_pool = slab;
     return pool;
 }
 
@@ -78,15 +83,15 @@ void phys_alloc_init() {
     __find_allocatable_region(&bounds);
 
     kprintln("Initializing buddy allocator");
-    _allocator = buddy_init(pool, bounds.start, bounds.end);
+    buddy_init(&_allocator, pool, bounds.start, bounds.end);
 }
 
 static inline void __freespace_check() {
-    if (_allocator->freelist_space_left < FREELIST_EXPANSION_THRESHOLD) {
+    if (_allocator.freelist_cache.total_free_objects < FREELIST_EXPANSION_THRESHOLD) {
         kprintln("Expanding freelist pool by one page");
-        vmzone_extend(1, VM_ALLOW_WRITE | VM_ALLOC_EARLY, VMZONE_BUDDY_MEM);
+        void *slab = vm_alloc_block(VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
 
-        buddy_freelist_pool_expand(_allocator, 1);
+        buddy_freelist_pool_expand(&_allocator, slab);
     }
 }
 
@@ -97,8 +102,8 @@ phys_addr_t phys_alloc(u8_t num_pages) {
 
     u8_t alloc_order = bit_order(num_pages);
 
-    phys_addr_t block_base = buddy_alloc_block(_allocator, alloc_order);
-    buddy_shrink_block(_allocator, block_base, alloc_order, num_pages);
+    phys_addr_t block_base = buddy_alloc_block(&_allocator, alloc_order);
+    buddy_shrink_block(&_allocator, block_base, alloc_order, num_pages);
     __freespace_check();
 
     return block_base;
@@ -115,10 +120,10 @@ void phys_block_shrink(phys_addr_t block_addr, u8_t block_size, u8_t target_size
         if ((block_size >> order) & 1) {
             // The allocation contains a block of this order. We either need to keep it, free it or shrink it depending on target_size
             if (target_size == 0) {
-                buddy_free_block(_allocator, block_addr, order);
+                buddy_free_block(&_allocator, block_addr, order);
             } else if (target_size <= (1 << order)) {
                 // Shrink the block since our target size is smaller than the block
-                buddy_shrink_block(_allocator, block_addr, order, target_size);
+                buddy_shrink_block(&_allocator, block_addr, order, target_size);
 
                 // We've exhausted the target size, by setting it to 0 all subsequent blocks will be freed.
                 target_size = 0;

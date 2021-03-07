@@ -1,8 +1,10 @@
 #include <mm/buddy_alloc.h>
 #include <mm/boot_mmap.h>
+#include <mm/vmzone.h>
 
 #include <utility/strings.h>
 #include <utility/math.h>
+#include <mm/slab.h>
 #include <mm/bitmap.h>
 
 size_t buddy_bmp_size_bits(size_t num_pages) {
@@ -28,8 +30,6 @@ static inline size_t __buddy_page_offset(size_t page_offset, u8_t order) {
 
 buddy_prealloc_vector buddy_estimate_pool_size(size_t num_pages) {
     size_t bitmap_struct_bytes = buddy_bmp_size_bits(num_pages) >> 3;
-    bitmap_struct_bytes += sizeof(buddy_allocator_t);
-
     size_t num_max_blocks = round_up_shift_right(num_pages, MAX_ORDER);
     
     // Since the free list memory pool can grow as needed (since it has no physical contiguity requirement)
@@ -45,49 +45,19 @@ buddy_prealloc_vector buddy_estimate_pool_size(size_t num_pages) {
     buddy_prealloc_vector prealloc;
 
     prealloc.bitmap_and_struct_pages = round_up_shift_right(bitmap_struct_bytes, PAGE_ORDER);
-    prealloc.freelist_pool_pages = round_up_shift_right(
-        freelist_nodes_estimate * sizeof(freelist_entry_t), PAGE_ORDER);
+    size_t per_slab = OBJS_PER_SLAB(freelist_entry_t);
+
+    prealloc.freelist_pool_slabs = (freelist_nodes_estimate + per_slab - 1) / per_slab, PAGE_ORDER;
 
     return prealloc;
 }
 
-static inline u32_t __increment_scanner(const buddy_allocator_t *allocator, u32_t scanner) {
-    if (scanner >= allocator->freelist_pool_size - 1) {
-        return scanner;
-    } else {
-        return scanner + 1;
-    }
-}
-
-u32_t __find_available_freelist_entry(buddy_allocator_t *allocator) {
-    // If there's a cached free list entry, clear the cahe and return it.
-    if (allocator->available_freelist_entry != NULL) {
-        u32_t cached_index = allocator->available_freelist_entry - allocator->freelist_pool;
-        allocator->available_freelist_entry = NULL;
-        return cached_index;
-    }
-
-    // Bruteforce search.
-    freelist_entry_t *pool = (freelist_entry_t *)allocator->freelist_pool;
-    u32_t scanner = allocator->freelist_pool_scanner;
-
-    while (pool[scanner].flags & FREELIST_PRESENT) {
-        scanner = __increment_scanner(allocator, scanner);
-    }
-    
-    allocator->freelist_pool_scanner = __increment_scanner(allocator, scanner);
-    return scanner;
-}
-
-void __allocate_freelist_entry(buddy_allocator_t *allocator, size_t page_offset, u8_t order) {
-    u32_t freelist_index = __find_available_freelist_entry(allocator);
-    freelist_entry_t *entry = allocator->freelist_pool + freelist_index;
-    entry->flags = FREELIST_PRESENT;
-    entry->next_entry = allocator->freelists[order] - allocator->freelist_pool;
+static inline void __allocate_freelist_entry(buddy_allocator_t *allocator, size_t page_offset, u8_t order) {
+    freelist_entry_t *entry = slab_alloc(&allocator->freelist_cache);
+    entry->next_entry = allocator->freelists[order] == NULL ? NULL : allocator->freelists[order] - entry;
     entry->page_offset = page_offset;
 
     allocator->freelists[order] = entry;
-    allocator->freelist_space_left -= 1;
 }
 
 void __populate_initial_freelists(buddy_allocator_t *allocator) {
@@ -125,35 +95,26 @@ void __populate_initial_freelists(buddy_allocator_t *allocator) {
     }
 }
 
-buddy_allocator_t *buddy_init(buddy_memory_pool pool, phys_addr_t base_addr, phys_addr_t end_addr) {
+void buddy_init(buddy_allocator_t *allocator, buddy_memory_pool pool, phys_addr_t base_addr, phys_addr_t end_addr) {
     const size_t region_size_pages = (end_addr - base_addr) >> PAGE_ORDER;
 
     // Use the base of the bitmap and struct pool for the allocator's internal structures.
-    buddy_allocator_t *allocator = pool.bitmap_and_struct_pool;
-    u8_t *bitmap_base = (u8_t*)pool.bitmap_and_struct_pool + sizeof(buddy_allocator_t);
+    u8_t *bitmap_base = (u8_t*)pool.bitmap_and_struct_pool;
     memset(allocator, 0, sizeof(buddy_allocator_t));
     
-    allocator->freelist_pool = pool.freelist_pool;
-    allocator->freelist_pool_size = (pool.freelist_pool_pages << 12) / sizeof(freelist_entry_t);
-
-    memset(allocator->freelist_pool, 0, allocator->freelist_pool_size * sizeof(freelist_entry_t));
-
     bmp_init(&allocator->buddy_state_map, bitmap_base, buddy_bmp_size_bits(region_size_pages));
+    slab_cache_init(&allocator->freelist_cache, sizeof(freelist_entry_t), _Alignof(freelist_entry_t), 0, VMZONE_BUDDY_MEM);
+    slab_cache_prealloc(&allocator->freelist_cache, pool.freelist_pool, pool.freelist_pool_slabs);
     
     allocator->base_addr = base_addr;
     allocator->end_addr = end_addr;
     
     for (u8_t order = 0; order <= MAX_ORDER; ++order) {
-        // The first entry of the freelist pool will be the NULL entry.
-        allocator->freelists[order] = allocator->freelist_pool;
+        // The first entry of the freelist pool will be NULL.
+        allocator->freelists[order] = NULL;
     }
 
-    allocator->freelist_space_left = allocator->freelist_pool_size - 1;
-    allocator->freelist_pool_scanner = 1;
-
     __populate_initial_freelists(allocator);
-
-    return allocator;
 }
 
 size_t __find_or_split_block(buddy_allocator_t *allocator, u8_t target_order) {
@@ -163,7 +124,7 @@ size_t __find_or_split_block(buddy_allocator_t *allocator, u8_t target_order) {
     freelist_entry_t *free_block;
     do {
         free_block = allocator->freelists[order];
-    } while (!(free_block->flags & FREELIST_PRESENT) && order++ < MAX_ORDER);
+    } while (free_block == NULL && order++ < MAX_ORDER);
 
     // We didn't find anything, return PAGE_OFFSET_OOB to indicate this.
     if (order > MAX_ORDER) {
@@ -172,7 +133,7 @@ size_t __find_or_split_block(buddy_allocator_t *allocator, u8_t target_order) {
 
     // Remove this block from the freelist of the corresponding order and flip its bitmap
     // bit (indicating that its been allocated).
-    allocator->freelists[order] = allocator->freelist_pool + free_block->next_entry;
+    allocator->freelists[order] = free_block->next_entry == NULL ? NULL : free_block + free_block->next_entry;
     size_t bmp_index = buddy_bmp_index_of(free_block->page_offset, order);
     bmp_toggle_bit(&allocator->buddy_state_map, bmp_index);
 
@@ -194,7 +155,7 @@ size_t __find_or_split_block(buddy_allocator_t *allocator, u8_t target_order) {
     // target_order, then all that remains is to take the current free_block and move it to the list 
     // of target_order.
 
-    free_block->next_entry = allocator->freelists[target_order] - allocator->freelist_pool;
+    free_block->next_entry = allocator->freelists[target_order] == NULL ? NULL : allocator->freelists[target_order] - free_block;
     allocator->freelists[target_order] = free_block;
 
     // We also need to flip the buddy state bit for target_order now that we've allocated one of the
@@ -208,11 +169,11 @@ size_t __find_or_split_block(buddy_allocator_t *allocator, u8_t target_order) {
 phys_addr_t buddy_alloc_block(buddy_allocator_t *allocator, u8_t order) {
     freelist_entry_t *free_block = allocator->freelists[order];
     size_t page_offset;
-    if (free_block->flags & FREELIST_PRESENT) {
+    if (free_block != NULL) {
         page_offset = free_block->page_offset;
 
         // Remove the block from the free list
-        allocator->freelists[order] = allocator->freelist_pool + free_block->next_entry;
+        allocator->freelists[order] = free_block->next_entry == NULL ? NULL : free_block + free_block->next_entry;
         
         // Make the block reclaimable and cache it for the next free / allocation
         __release_freelist_entry(allocator, free_block);
@@ -234,31 +195,29 @@ phys_addr_t buddy_alloc_block(buddy_allocator_t *allocator, u8_t order) {
 freelist_entry_t *__pop_freelist_entry(buddy_allocator_t *allocator, size_t page_offset, u8_t order) {
     freelist_entry_t *entry, *prev;
 
-    prev = allocator->freelist_pool;
+    prev = NULL;
     entry = allocator->freelists[order];
 
-    while ((entry->flags & FREELIST_PRESENT) && entry->page_offset != page_offset) {
+    while (entry != NULL && entry->page_offset != page_offset) {
         prev = entry;
-        entry = allocator->freelist_pool + entry->next_entry;
+        entry = entry->next_entry == NULL ? NULL : entry + entry->next_entry;
     }
 
-    if (!(entry->flags & FREELIST_PRESENT)) {
+    if (entry == NULL) {
         return NULL;
     }
 
     if (entry == allocator->freelists[order]) {
-        allocator->freelists[order] = allocator->freelist_pool + entry->next_entry;
+        allocator->freelists[order] = entry->next_entry == NULL ? NULL : entry + entry->next_entry;
     } else {
-        prev->next_entry = entry->next_entry;
+        prev->next_entry = entry->next_entry == NULL ? NULL : (entry + entry->next_entry) - prev;
     }
 
     return entry;
 }
 
 inline void __release_freelist_entry(buddy_allocator_t *allocator, freelist_entry_t *entry) {
-    memset(entry, 0, sizeof(freelist_entry_t));
-    allocator->freelist_space_left += 1;
-    allocator->available_freelist_entry = entry;
+    slab_free(&allocator->freelist_cache, entry);
 }
 
 int __can_coalesce(buddy_allocator_t *allocator, size_t coalesced_offset, u8_t order, size_t *bmp_index) {
@@ -305,8 +264,7 @@ void buddy_free_block(buddy_allocator_t *allocator, phys_addr_t block_base, u8_t
 
         // Finally we've reached the highest possible coalescable order, we just need to move the freelist entry
         // to this order.
-        buddy->flags = FREELIST_PRESENT;
-        buddy->next_entry = allocator->freelists[coalesced_order] - allocator->freelist_pool;
+        buddy->next_entry = allocator->freelists[coalesced_order] == NULL ? NULL : allocator->freelists[coalesced_order] - buddy;
         buddy->page_offset = coalesced_offset;
 
         // Add the buddy block to the free list and toggle its bit.
@@ -374,7 +332,6 @@ void buddy_shrink_block(buddy_allocator_t *allocator, phys_addr_t block_base, u8
     allocator->allocated_bytes -= bytes_freed;
 }
 
-void buddy_freelist_pool_expand(buddy_allocator_t *allocator, u8_t num_pages) {
-    allocator->freelist_pool_size += (num_pages << PAGE_ORDER) / sizeof(freelist_entry_t);
-    allocator->freelist_space_left += (num_pages << PAGE_ORDER) / sizeof(freelist_entry_t);
+void buddy_freelist_pool_expand(buddy_allocator_t *allocator, void *slab) {
+    slab_cache_prealloc(&allocator->freelist_cache, slab, 1);
 }

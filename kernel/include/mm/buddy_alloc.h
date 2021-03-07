@@ -3,6 +3,7 @@
 
 #include <mm.h>
 #include <mm/bitmap.h>
+#include <mm/slab.h>
 #include <types.h>
 #include <utility/math.h>
 
@@ -15,15 +16,11 @@
 
 #define FREELIST_PRESENT 0x1
 
-// Free list nodes will be allocated in a virtually contiguous array of memory.
-// Pages are allocated and vm mapped early into the bootstrapping phase of the
-// physical allocation subsystem of the kernel. Enough pages are initialized so
-// there's more than enough space for free list nodes, but if ever more pages are
-// needed they can be mapped.
+// Free list nodes will be allocated by a SLAB allocator.
 typedef struct {
-    // The next entry is referred to by an index into the array. By convention index 0
-    // will be untouchable and will be a null entry. So index 0 refers to a null ptr (as one would expect).
-    u32_t next_entry;
+    // The next entry is referred to as an offset between the virtual address of the current freelist entry and the next entry.
+    // We only need signed 32 bits as freelist entries are allocated in a 1GB region of virtual memory.
+    s32_t next_entry;
     
     // Page offset is the number of pages from base_addr of the allocator that this free list node represents
     u64_t page_offset : 24;
@@ -35,26 +32,11 @@ typedef struct buddy_allocator {
     // The bit is 1 if only one of the buddies is allocated, and 0 if both are allocated or free.
     bitmap_t buddy_state_map;
 
+    // SLAB Allocator Cache for the freelist.
+    kmem_cache_t freelist_cache;
+
     // We maintain a single free list for all orders
     freelist_entry_t *freelists[MAX_ORDER + 1];
-
-    freelist_entry_t *freelist_pool;
-
-    // Cache a free list entry to avoid searching when a free follows an allocation.
-    // When clearing a node from the free list the allocator will set this to point to that now freed
-    // entry.
-    freelist_entry_t *available_freelist_entry;
-
-    // This index is used when finding an empty freelist node. The allocator will search to the right of
-    // this index and eventually wrap around. This allows us to be very fast in the beginning when the pool isnt
-    // full by constantly moving right and getting free blocks in a single iteration.
-    u32_t freelist_pool_scanner;
-    
-    // The number of unallocated freelist nodes left in the pool
-    u32_t freelist_space_left;
-
-    // Size measured in sizeof(freelist_entry_t)
-    size_t freelist_pool_size;
 
     phys_addr_t base_addr;
     phys_addr_t end_addr;
@@ -68,14 +50,14 @@ typedef struct buddy_allocator {
 // and the freelist pool separately.
 typedef struct {
     u16_t bitmap_and_struct_pages;
-    u16_t freelist_pool_pages;
+    u16_t freelist_pool_slabs;
 } buddy_prealloc_vector;
 
 // Memory pool for internal buddy allocator structures
 typedef struct {
     virt_addr_t bitmap_and_struct_pool;
     virt_addr_t freelist_pool;
-    size_t freelist_pool_pages;
+    u16_t freelist_pool_slabs;
 } buddy_memory_pool;
 
 static inline size_t page_offset_of(phys_addr_t address) {
@@ -113,11 +95,11 @@ size_t buddy_bmp_size_bits(size_t num_pages);
 buddy_prealloc_vector buddy_estimate_pool_size(size_t num_pages);
 
 // Initialize the buddy allocator. 
-buddy_allocator_t *buddy_init(buddy_memory_pool pool, phys_addr_t start_addr, phys_addr_t end_addr);
+void buddy_init(buddy_allocator_t *allocator, buddy_memory_pool pool, phys_addr_t start_addr, phys_addr_t end_addr);
 
-// Extends the freelist pool by a number of pages. It doesn't actually perform the allocation, it's the responsibility
+// Extends the freelist cache by a number of slabs. It doesn't actually perform the allocation, it's the responsibility
 // of the caller to assert that the virtual memory has been mapped correctly.
-void buddy_freelist_pool_expand(buddy_allocator_t *allocator, u8_t num_pages);
+void buddy_freelist_pool_expand(buddy_allocator_t *allocator, void *slab);
 
 // Allocator a block of the specified order. The caller should remember what order the block is
 // in order to free the block correctly. Returns the base address of the block.

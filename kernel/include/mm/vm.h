@@ -64,7 +64,7 @@ virt_addr_t vmzone_extend(u8_t pages, u8_t flags, u16_t vmzone);
 // from the contiguous zone
 int vmzone_shrink(u8_t pages, u16_t vmzone);
 
-void _prepare_block_pt(const vmzone_t * zone, virt_addr_t base_pt_addr, page_table_t *pt);
+void _prepare_block_pt(const vmzone_t *zone, virt_addr_t base_pt_addr, page_table_t *pt);
 
 // Allocate a block in a VMZFLAG_ALLOC_BLOCK virtual memory zone.
 virt_addr_t vm_alloc_block(u8_t flags, u16_t vmzone);

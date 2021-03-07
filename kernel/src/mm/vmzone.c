@@ -39,10 +39,10 @@ void vmzone_init()
 
     // Kernel stacks should be mapped in user space for stack switches.
     __define_vmzone(KERNEL_NORMAL_MEM, 128, VMZONE_KERNEL_STACK, VMZFLAG_BLOCK_ALLOC, 1);
-
+    
     // Give the rest of the KERNEL_NORMAL_MEM_ZONE, we allow execute because some interrupt code
     // may need to be mapped into this zone.
-    __define_vmzone(KERNEL_NORMAL_MEM + (128ul << 30), 128, VMZONE_BUDDY_MEM, VMZFLAG_CONTIGUOUS, 0);
+    __define_vmzone(KERNEL_NORMAL_MEM + (128ul << 30), 1, VMZONE_BUDDY_MEM, VMZFLAG_BLOCK_ALLOC, 1);
 
     __define_vmzone(KERNEL_NORMAL_MEM + (256ul << 30), 256, VMZONE_USER_SHARED, VMZFLAG_ALLOW_EXECUTE, 0);
 }

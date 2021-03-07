@@ -9,7 +9,6 @@ each PML4T will point to the same space in these zones.
 
 #include <types.h>
 #include <mm.h>
-#include <mm/vm.h>
 
 // Memory that can remain mapped in user space, it's not sensitive in any way and not susceptible
 // to meltdown. In some cases it actually has to be kept in the user space mapping so an interrupt
@@ -44,10 +43,10 @@ each PML4T will point to the same space in these zones.
 // without needing a full CR3 change.
 #define VMZONE_USER_SHARED 0x2
 
-// Zone for slab allocations
+// Zone for heap allocations
 #define VMZONE_KERNEL_SLAB 0x3
 
-// Zone for buddy memory
+// Zone for memory used by the buddy allocator.
 #define VMZONE_BUDDY_MEM   0x4
 
 #define VMZONE_NUMBER_OF_ZONES 5

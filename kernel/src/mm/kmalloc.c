@@ -1,5 +1,6 @@
 #include <mm/slab.h>
 #include <mm/kmalloc.h>
+#include <mm/vmzone.h>
 
 #define NUM_CACHE_SIZES (sizeof(kmalloc_sizes) / sizeof(u16_t))
 #define NUM_SLABS_RESERVED 3
@@ -13,7 +14,7 @@ kmem_cache_t __caches[NUM_CACHE_SIZES];
 void kmalloc_init() {
     for (u16_t i = 0; i < NUM_CACHE_SIZES; ++i) {
         kmem_cache_t *cache = &__caches[i];
-        slab_cache_init(cache, kmalloc_sizes[i], 8, i);
+        slab_cache_init(cache, kmalloc_sizes[i], 8, i, VMZONE_KERNEL_SLAB);
         slab_cache_reserve(cache, cache->objs_per_slab * NUM_SLABS_RESERVED);
     }
 

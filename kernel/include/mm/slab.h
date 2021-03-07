@@ -7,7 +7,7 @@
 
 
 #define SLAB_ORDER 1
-
+#define OBJS_PER_SLAB(type) ((sizeof(slab_t) - sizeof(slab_header_t)) / sizeof(type))
 
 typedef struct __slab_object {
     union {
@@ -58,8 +58,10 @@ typedef struct __kmem_slab_cache {
     u16_t total_partial_slabs;
     u16_t total_full_slabs;
     u32_t allocated_objects;
+    u32_t total_free_objects;
     u16_t objs_per_slab;
     u16_t cache_id;
+    u16_t vmzone;
 
     // How many bytes is wasted for header info + extra padding per slab (not including internal padding for alignment).
     u16_t slab_overhead;
@@ -70,10 +72,13 @@ typedef struct __kmem_slab_cache {
 } kmem_cache_t;
 
 // Initialize an object cache
-void slab_cache_init(kmem_cache_t *cache, u16_t obj_size, u16_t obj_align, u16_t cache_id);
+void slab_cache_init(kmem_cache_t *cache, u16_t obj_size, u16_t obj_align, u16_t cache_id, u16_t vmzone);
 
 // Reserve enough slabs up front for the provided number of objects.
 void slab_cache_reserve(kmem_cache_t *cache, u16_t num_objects);
+
+// Given preallocated memory, initialize @num_slabs slab(s).
+void slab_cache_prealloc(kmem_cache_t *cache, void *pages, u8_t num_slabs);
 
 // Allocate an object.
 void *slab_alloc(kmem_cache_t *cache);
