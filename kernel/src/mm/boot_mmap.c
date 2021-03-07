@@ -1,6 +1,6 @@
 #include <mm.h>
 #include <mm/boot_mmap.h>
-#include <driver/vga.h>
+#include <log.h>
 
 #include <utility/bootinfo.h>
 #include <utility/math.h>
@@ -23,43 +23,31 @@ static inline u32_t __num_mmap_entries(const struct multiboot_tag_mmap *mmap_tag
 void print_boot_mmap() {
     const struct multiboot_tag_mmap *mmap_tag = boot_tag_by_type(MULTIBOOT_TAG_TYPE_MMAP);
 
-    char buf[20];
-
-    kprintln("Base Address   | Region Length    | Region Type");
+    printk("Base Address   | Region Length    | Region Type\n");
 
     const u32_t num_entries = __num_mmap_entries(mmap_tag);
 
     for (const struct multiboot_mmap_entry *entry = mmap_tag->entries; entry - mmap_tag->entries < num_entries; ++entry) {
-        ptr_to_hex(entry->addr, buf);
-        kputs(buf);
-
-        kputs(" | ");
-
-        itoa((s64_t)entry->len, buf, 10);
-        ljust(buf, 16, ' ');
-
-        kputs(buf);
-
-        kputs(" | ");
+        static const char *fmt = "%#014.12llx | %16d | %s\n";
 
         switch (entry->type) {
         case E820_USABLE_RAM:
-            kprintln("Free Space");
+            printk(fmt, entry->addr, entry->len, "Free Space");
             break;
         case E820_RESERVED:
-            kprintln("Reserved");
+            printk(fmt, entry->addr, entry->len, "Reserved");
             break;
         case E820_ACPI_RECLAIMABLE:
-            kprintln("ACPI Reclaimable");
+            printk(fmt, entry->addr, entry->len, "ACPI Reclaimable");
             break;
         case E820_ACPI_NVS:
-            kprintln("ACPI NVS Memory");
+            printk(fmt, entry->addr, entry->len, "ACPI NVS Memory");
             break;
         case E820_BAD_MEM:
-            kprintln("Bad Memory");
+            printk(fmt, entry->addr, entry->len, "Bad Memory");
             break;
         default:
-            kprintln("Unknown Type");
+            printk(fmt, entry->addr, entry->len, "Unknown Type");
             break;
         }
     }

@@ -91,7 +91,24 @@ void reverse(char *str) {
     }
 }
 
-int itoa(s64_t value, char *str, u64_t base) {
+s64_t atoi(const char *str) {
+    s64_t value = 0;
+    u8_t negative = 0;
+
+    if (*str == '-') {
+        negative = 1;
+        ++str;
+    }
+
+    while (*str) {
+        u8_t digit = *(str++) - '0';
+        value = value * 10 + digit;
+    }
+
+    return negative ? -value : value;
+}
+
+int itoa(s64_t value, char *str, u8_t base) {
     size_t i = 0;
     int isNegative = 0;
 
@@ -135,7 +152,63 @@ int itoa(s64_t value, char *str, u64_t base) {
     return 1;
 }
 
+int utoa(u64_t value, char *str, u8_t base) {
+    size_t i = 0;
+
+    if (value == 0) {
+        str[0] = '0';
+        str[1] = 0;
+        return 1;
+    }
+
+    // Process individual digits 
+    while (value != 0) 
+    { 
+        s64_t rem = value % base; 
+        str[i++] = (rem > 9) ? (rem-10) + 'A' : rem + '0'; 
+        value = value / base; 
+    }
+
+    str[i] = 0;
+
+    reverse(str);
+
+    return 1;
+}
+
+char *prepend(char *str, const char *prefix) {
+    size_t shift = strlen(prefix);
+
+    char *end = str + strlen(str);
+    char *shifted = end + shift;
+
+    while (end >= str) {
+        *(shifted--) = *(end--);
+    }
+
+    end = str;
+
+    while (*prefix) {
+        *(end++) = *(prefix++);
+    }
+
+    return str;
+}
+
 char *ljust(char *str, size_t n, char pad_char) {
+    size_t length = strlen(str);
+    size_t i;
+
+    for (i = length; i < n; ++i) {
+        str[i] = pad_char;
+    }
+
+    str[i] = 0;
+
+    return str;
+}
+
+char *rjust(char *str, size_t n, char pad_char) {
     // Justify a numeric string with 0s
     // We'll assume the buffer is long enough
     size_t length = strlen(str);
@@ -166,5 +239,5 @@ void ptr_to_hex(void *ptr, char *buf) {
     
     itoa((s64_t)ptr, buf + 2, 16);
 
-    ljust(buf + 2, 12, '0');
+    rjust(buf + 2, 12, '0');
 }

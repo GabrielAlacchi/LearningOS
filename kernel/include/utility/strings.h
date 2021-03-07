@@ -18,9 +18,13 @@ void *memcpy(void *dest, const void *source, size_t n);
 void *memset(void *dest, u8_t value, size_t n);
 
 void reverse(char *str);
-int itoa(s64_t value, char *str, u64_t base);
-int utoa(u64_t value, char *str, u64_t base);
+s64_t atoi(const char *str);
+int itoa(s64_t value, char *str, u8_t base);
+int utoa(u64_t value, char *str, u8_t base);
+
+char *prepend(char *str, const char *prefix);
 char *ljust(char *str, size_t n, char pad_char);
+char *rjust(char *str, size_t n, char pad_char);
 
 void ptr_to_hex(void *ptr, char *buf);
 

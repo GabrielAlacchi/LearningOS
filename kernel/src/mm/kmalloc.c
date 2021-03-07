@@ -32,6 +32,8 @@ void kmalloc_init() {
     }
 }
 
+// Can be mocked in tests
+__attribute__((weak))
 void *kmalloc(u16_t size) {
     if (size > MAX_KMALLOC_SIZE) {
         return NULL;
@@ -41,6 +43,7 @@ void *kmalloc(u16_t size) {
     return slab_alloc(__caches + cache);
 }
 
+__attribute((weak))
 void kfree(void *ptr) {
     u16_t cache_idx = cache_id_for_alloc(ptr);
 

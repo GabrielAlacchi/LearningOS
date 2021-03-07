@@ -9,6 +9,8 @@
 #include <utility/strings.h>
 #include <driver/vga.h>
 
+#include <log.h>
+
 
 typedef struct {
     u64_t a;
@@ -24,27 +26,19 @@ int kernel_main() {
     kprintln("Setting up the IDT");
 
     isr_install();
+
+    mm_init();
+
     kputs("\n\n");
     kprintln("--- E820 Boot Map ---");
     print_boot_mmap();
 
     kputs("\r\n\n");
 
-    mm_init();
-
     vmzone_extend(64, VM_ALLOW_WRITE, VMZONE_KERNEL_HEAP);
     vmzone_extend(64, VM_ALLOW_WRITE, VMZONE_KERNEL_HEAP);
 
     vmzone_shrink(72, VMZONE_KERNEL_HEAP);
-
-    char *str = kmalloc(120);
-    str[0] = 'a';
-    str[1] = 'b';
-    str[2] = 0;
-
-    kprintln(str);
-
-    kfree(str);
 
     return 0;
 }
