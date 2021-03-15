@@ -1,15 +1,21 @@
 #include <cpu/isr.h>
 #include <types.h>
 #include <mm.h>
+#include <mm/page.h>
 #include <mm/buddy_alloc.h>
 #include <mm/phys_alloc.h>
+#include <mm/page_alloc.h>
 #include <mm/vm.h>
 #include <mm/slab.h>
 #include <mm/kmalloc.h>
 #include <utility/strings.h>
 #include <driver/vga.h>
+#include <cpu/atomic.h>
 
 #include <log.h>
+
+
+extern page_info_t *__freelist_head;
 
 
 typedef struct {
@@ -21,7 +27,7 @@ typedef struct {
 int kernel_main() {
     set_cursor_pos(0, 0);
     clearwin(COLOR_WHT, COLOR_BLK);
-        
+
     kprintln("Kernel Initialized"); 
     kprintln("Setting up the IDT");
 
@@ -35,10 +41,22 @@ int kernel_main() {
 
     kputs("\r\n\n");
 
-    vmzone_extend(64, VM_ALLOW_WRITE, VMZONE_KERNEL_HEAP);
-    vmzone_extend(64, VM_ALLOW_WRITE, VMZONE_KERNEL_HEAP);
+    printk("sizeof(page_info_t)=%d\n", sizeof(page_info_t));
 
-    vmzone_shrink(72, VMZONE_KERNEL_HEAP);
+    printk("last_kernel_page = %#llx\n", last_kernel_page);
+
+    page_info_t *page = page_info(last_kernel_page + 0x1000);
+    printk("kernel flag of next page = %hu\n", page->flags & PAGE_KERNEL);
+
+    size_t freelist_pages = 0;
+    page = __freelist_head;
+
+    while (page != NULL) {
+        freelist_pages += 1;
+        page = page->freelist_info.next_free;
+    }
+
+    printk("%u available freelist pages\n", freelist_pages);
 
     return 0;
 }

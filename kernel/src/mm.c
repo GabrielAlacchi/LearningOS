@@ -1,15 +1,23 @@
 #include <cpu/msr.h>
 #include <driver/vga.h>
 #include <mm.h>
+#include <mm/boot_mmap.h>
 #include <mm/phys_alloc.h>
 #include <mm/vm.h>
 #include <mm/kmalloc.h>
+#include <mm/page_alloc.h>
+#include <mm/page.h>
+
 
 void mm_init() {
     kprintln("Enabling EFER.NXE for execution protection");
 
     // Enable EFER.NXE bit in EFER MSR.
     enable_paging_protection_bits();
+
+    init_global_page_map();
+
+    page_alloc_init();
 
     vm_init();
 

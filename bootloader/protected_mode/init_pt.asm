@@ -78,7 +78,16 @@ init_pt_protected:
     add edi, 0x8 ; Move to the P3[0]
     mov dword[edi], page_tables_begin + 0x2003 ; Set P3[0] to address 0x3000 which is P2[0]
     add edi, 0x1000 ; Move to the next page table
-    mov dword[edi], 0x0083 ; Create a "huge page" at P2[0]
+    
+    push edi
+    push ebx
+
+    xor ebx, ebx
+    call fill_huge_pages
+
+    pop ebx
+    pop edi
+
     add edi, 0x1FF0 ; Move to the latter P3 at index 510
     mov dword[edi], page_tables_begin + 0x4003 ; Point to the page directory at 0x5000
     add edi, 0x8 ; Move the P3[511]

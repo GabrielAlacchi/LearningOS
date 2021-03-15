@@ -14,4 +14,7 @@ typedef signed char s8_t;
 // We're targeting 64-bit so let's use a full long register as size_t
 typedef u64_t size_t;
 
+#define likely(expr) __builtin_expect(expr, 1)
+#define unlikely(expr) __builtin_expect(expr, 0)
+
 #endif

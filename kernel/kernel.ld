@@ -4,7 +4,7 @@ SECTIONS
 {
   KERNEL_VMA = 0xFFFFFFFF80000000;
 
-  . = 1M;
+  . = 16M;
   __KERNEL_PHYSICAL_START = .;
 
   .multiboot : {
@@ -47,6 +47,9 @@ SECTIONS
   {
     *(.rodata)
   }
+
+  __KERNEL_RODATA_START = (LOADADDR (.rodata) + 0xFFF) & 0xFFFFFFFFFFFFF000;
+  __KERNEL_RODATA_END = (LOADADDR (.rodata) + SIZEOF (.rodata) + 0xFFF) & 0xFFFFFFFFFFFFF000;
 
   . = ALIGN(0x1000);
 
