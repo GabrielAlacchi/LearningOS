@@ -1,6 +1,7 @@
 #include <mm.h>
 #include <mm/boot_mmap.h>
 #include <mm/page.h>
+#include <mm/page_alloc.h>
 #include <cpu/atomic.h>
 #include <utility/bootinfo.h>
 #include <utility/strings.h>
@@ -54,6 +55,8 @@ void init_global_page_map() {
     }
     
     const size_t kernel_start_idx = (size_t)&__KERNEL_PHYSICAL_START >> PAGE_ORDER;
+    first_kernel_page = kernel_start_idx << PAGE_ORDER;
+    
     const size_t gpm_end_idx = (start_of_global_map + gpm_size + PAGE_SIZE - 1) >> PAGE_ORDER;
 
     for (size_t idx = kernel_start_idx; idx <= gpm_end_idx; ++idx) {
@@ -104,11 +107,18 @@ u16_t reference_page(page_info_t *page) {
 u16_t drop_page_reference(page_info_t *page) {
     u16_t new_ref_count = counter16_increment_atomic(&page->refcount, -1);
 
-    if (new_ref_count == 0 && page->flags & PAGE_BUDDY) {
-        struct __buddy_alloc_info *block_base_alloc_info = &page->buddy_alloc_info.block_base->buddy_alloc_info;
+    if (new_ref_count == 0) {
+        if (page->flags & PAGE_FREELIST) {
+            _pfa_free_page(page_address_from_info(page));
+        } else {        
+            page_info_t *block_base = page_buddy_block_base(page);
 
-        // TODO free this block with the buddy allocator if the result is 0
-        counter16_increment_atomic(&block_base_alloc_info->free_count, -1);
+            // TODO free this block with the buddy allocator if the result is 0
+            u16_t block_count = counter16_increment_atomic(&block_base->_block_used_count, -1);
+            if (block_count == 0) {
+                _pfa_free_block(page_address_from_info(page));
+            }
+        }
     }
 
     return new_ref_count;

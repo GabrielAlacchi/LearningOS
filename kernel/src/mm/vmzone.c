@@ -6,6 +6,8 @@
 #include <mm/phys_alloc.h>
 #include <mm/slab.h>
 
+/*
+
 static vmzone_t zones[VMZONE_NUMBER_OF_ZONES];
 
 // Cache the PDPT entries of the sensitive and normal virtual memory regions.
@@ -127,3 +129,5 @@ void vmspace_init(page_table_t *pml4t, u8_t flags)
         zone_pdpt->entries[pdpt_off] |= vm_pt_entry_create(pdt_phys, zone->vm_flags);
     }
 }
+ 
+ */

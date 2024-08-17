@@ -60,9 +60,9 @@ buddy_memory_pool __prealloc_buddy_pool(_alloc_bounds_t *bounds) {
 
     // The assumption here is that the blocks that are allocated in the zones at this point will be contiguous since these are
     // the first ever allocations in this zone.
-    void *slab = vm_alloc_block(VM_ALLOC_EARLY | VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
+    void *slab = NULL; // vm_alloc_block(VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
     for (u8_t i = 1; i < pool_size_vector.freelist_pool_slabs; ++i) {
-        vm_alloc_block(VM_ALLOC_EARLY | VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
+        // vm_alloc_block(VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
     }
 
     pool.freelist_pool_slabs = pool_size_vector.freelist_pool_slabs;
@@ -87,12 +87,12 @@ void phys_alloc_init() {
 }
 
 static inline void __freespace_check() {
-    if (_allocator.freelist_cache.total_free_objects < FREELIST_EXPANSION_THRESHOLD) {
+    /* if (_allocator.freelist_cache.total_free_objects < FREELIST_EXPANSION_THRESHOLD) {
         kprintln("Expanding freelist pool by one page");
         void *slab = vm_alloc_block(VM_ALLOW_WRITE, VMZONE_BUDDY_MEM);
 
         buddy_freelist_pool_expand(&_allocator, slab);
-    }
+    } */
 }
 
 phys_addr_t phys_alloc(u8_t num_pages) {

@@ -1,70 +1,188 @@
 #include <utility/math.h>
 #include <utility/strings.h>
-#include <mm/boot_mmap.h>
 #include <mm/vm.h>
 #include <mm/vmzone.h>
-#include <mm/phys_alloc.h>
+#include <mm/page_alloc.h>
+#include <mm/page.h>
 
 #define PAGE_ADDRESS_MASK ((MASK_FOR_FIRST_N_BITS(40)) << 12)
 #define MASK_UNRESERVED_BITS (~(PAGE_ADDRESS_MASK | (1ul << 63) | MASK_FOR_FIRST_N_BITS(9)))
 
-void vm_init()
-{
-    vmzone_init();
+vmblock_alloc_t pt_virt_allocator;
 
-    page_table_t *pml4t = KPHYS_ADDR(read_cr3());
+extern phys_addr_t __KERNEL_PHYSICAL_START;
 
-    vmspace_init(pml4t, VM_ALLOC_EARLY);
+// PDPTs which are shared by all address spaces. They will be initialized once and then reused by all processes.
+page_table_t *kmap_pdpt = NULL, *heap_pdpt = NULL;
+
+static phys_addr_t __early_page_table_alloc() {
+    phys_addr_t pt = pfa_alloc_page();
+    memset(KPHYS_ADDR(pt), 0, PAGE_SIZE);
+    return pt;
 }
 
-phys_addr_t _alloc_page_tables(u8_t num_pages, u8_t flags)
-{
-    phys_addr_t alloc_base;
-
-    if (flags & VM_ALLOC_EARLY)
-    {
-        alloc_base = reserve_physmem_region(num_pages);
-    }
-    else
-    {
-        alloc_base = phys_alloc(num_pages);
-    }
-
-    page_table_t *page_tables = KPHYS_ADDR(alloc_base);
-    memset(page_tables, 0, num_pages << PAGE_ORDER);
-
-    for (size_t i = 0; i < num_pages; ++i)
-    {
-        // The first entry stores metadata about the allocation of the actual page table
-        pt_entry_t first_entry = 0;
-
-        if (flags & VM_ALLOC_EARLY)
-        {
-            first_entry |= PT_EARLY_ALLOC;
-        }
-
-        if (i > 0)
-        {
-            // Indicate that there is a page table at phys_addr - 4096 that was allocated together
-            // with this one.
-            first_entry |= PT_PAGE_BEHIND;
-        }
-
-        if (i < num_pages - 1)
-        {
-            // Indicate that there is a page table at phys_addr + 4096 that was allocated together
-            // with this one.
-            first_entry |= PT_PAGE_AHEAD;
-        }
-
-        page_tables[i].entries[0] = first_entry;
-    }
-
-    return alloc_base;
+static inline void __mark_pt_page_info(const phys_addr_t pt_phys, const page_table_t *pt_virt) {
+    global_page_map[pt_phys >> PAGE_ORDER].flags |= PAGE_PT;
+    global_page_map[pt_phys >> PAGE_ORDER].pt_virt = pt_virt;
 }
 
-int vm_check_status(pt_entry_t entry, u8_t flags)
-{
+static inline void __early_pt_map(page_table_t *ptzone_pt, const phys_addr_t pt_address, u16_t offset) {
+    // Map the page table
+    ptzone_pt->entries[offset] = vm_pt_entry_create(pt_address, VM_ALLOW_WRITE);
+    page_info_t *pt_page = page_info(pt_address);
+
+    pt_page->flags |= PAGE_PT;
+    pt_page->pt_virt = VM_REGION_PT + ((size_t)offset << PAGE_ORDER);
+}
+
+static inline pt_entry_t __pt_entry_for_blk_offset(virt_addr_t origin, virt_addr_t dest) {
+    if (dest > origin) {
+        return dest - origin;
+    } else {
+        return (dest - origin) | PT_OFFSET_NEGATIVE;
+    }
+}
+
+// Creates the first virtual memory space
+static phys_addr_t __create_initial_vmspace() {
+    phys_addr_t pml4t_phys = __early_page_table_alloc();
+    phys_addr_t map_pdpt_phys = __early_page_table_alloc();
+    phys_addr_t heap_pdpt_phys = __early_page_table_alloc();
+
+    page_table_t *pml4t = KPHYS_ADDR(pml4t_phys);
+    kmap_pdpt = KPHYS_ADDR(map_pdpt_phys);
+    heap_pdpt = KPHYS_ADDR(heap_pdpt_phys);
+
+    memset(pml4t, 0, sizeof(page_table_t));
+    memset(kmap_pdpt, 0, sizeof(page_table_t));
+    memset(heap_pdpt, 0, sizeof(page_table_t));
+
+    // Kernel code is mapped into this zone, allow exec
+    pml4t->entries[pml4t_offset(VM_REGION_PT)] = vm_pt_entry_create(map_pdpt_phys, VM_ALLOW_EXEC | VM_ALLOW_WRITE);
+    pml4t->entries[pml4t_offset(VM_REGION_HEAP)] = vm_pt_entry_create(heap_pdpt_phys, VM_ALLOW_WRITE);
+
+    page_info_t *kernel_page = page_info(first_kernel_page);
+    phys_addr_t kmap_pdt_phys = __early_page_table_alloc();
+    page_table_t *kmap_pdt = KPHYS_ADDR(kmap_pdt_phys);
+    void *kernel_base = KPHYS_ADDR(first_kernel_page);
+
+    kmap_pdpt->entries[pdpt_offset(kernel_base)] = vm_pt_entry_create(kmap_pdt_phys, VM_ALLOW_EXEC | VM_ALLOW_WRITE);
+    
+    // Now we need to map the PTs into the PT zone.
+    phys_addr_t pt_pdt_phys = __early_page_table_alloc(), pt_pt_phys = __early_page_table_alloc();
+    page_table_t *pt_pdt = KPHYS_ADDR(pt_pdt_phys), *pt_pt = KPHYS_ADDR(pt_pt_phys);
+    kmap_pdpt->entries[pdpt_offset(VM_REGION_PT)] = vm_pt_entry_create(pt_pdt_phys, VM_ALLOW_WRITE);
+    pt_pdt->entries[pdt_offset(VM_REGION_PT)] = vm_pt_entry_create(pt_pt_phys, VM_ALLOW_WRITE);
+    
+    __early_pt_map(pt_pt, pml4t_phys, 0);
+    __early_pt_map(pt_pt, kmap_pdt_phys, 1);
+    __early_pt_map(pt_pt, heap_pdpt_phys, 2);
+    __early_pt_map(pt_pt, kmap_pdt_phys, 3);
+    __early_pt_map(pt_pt, pt_pdt_phys, 4);
+    __early_pt_map(pt_pt, pt_pt_phys, 5);
+
+    size_t num_pts = pt_offset(KPHYS_ADDR(last_kernel_page)) - pt_offset(KPHYS_ADDR(first_kernel_page)) + 1;
+    page_info_t *last_page_to_map = page_info(last_kernel_page);
+
+    // Map the kernel
+    for (size_t i = 0; i < num_pts; ++i) {
+        phys_addr_t pt = __early_page_table_alloc();
+        __early_pt_map(pt_pt, pt, 6 + i);
+        page_table_t *pt_page = KPHYS_ADDR(pt);
+
+        size_t max_to_map = MIN(512, last_page_to_map - kernel_page);
+
+        for (size_t j = 0; j < max_to_map; ++j, ++kernel_page) {
+            phys_addr_t page_phys = page_address_from_info(kernel_page);
+            void *map_to_address = KPHYS_ADDR(page_phys);
+            
+            u8_t flags = VM_ALLOW_EXEC;
+            if (unlikely(!(kernel_page->flags & PAGE_READONLY))) {
+                flags |= VM_ALLOW_WRITE;
+            }
+
+            pt_page->entries[pt_offset(map_to_address)] = vm_pt_entry_create(page_phys, flags);
+        }
+
+        kmap_pdt->entries[pt_offset(first_kernel_page) + i] = vm_pt_entry_create(pt, VM_ALLOW_WRITE | VM_ALLOW_EXEC);
+    }
+
+    return pml4t_phys;
+}
+
+// Initialize a page table which is a freelist of blocks
+static void __allocate_block_pt(vmblock_alloc_t *allocator) {
+    // Allocate a page for the PT and map it to an available block in pt_virt_allocator.
+    phys_addr_t pt_phys = pfa_alloc_page();
+    page_table_t *pdt, *pt = (page_table_t *)vm_block_claim(&pt_virt_allocator, pt_phys, VM_ALLOW_WRITE);
+    __mark_pt_page_info(pt_phys, pt);
+
+    pt_entry_t pdpt_entry = allocator->shared_pdpt->entries[pdpt_offset(allocator->next_empty_pt)];
+
+    if (likely(pdpt_entry & PT_PRESENT)) {
+        pdt = pt_from_entry(pdpt_entry);
+    } else {
+        phys_addr_t pdt_phys = pfa_alloc_page();
+        pdt = (page_table_t *)vm_block_claim(&pt_virt_allocator, pdt_phys, VM_ALLOW_WRITE);
+        memset(pdt, 0, 4096);
+
+        allocator->shared_pdpt->entries[pdpt_offset(allocator->next_empty_pt)] = vm_pt_entry_create(pdt_phys, VM_ALLOW_WRITE);
+        __mark_pt_page_info(pdt_phys, pdt);
+    }
+
+    memset(pt, 0, 4096);
+
+    u16_t nblocks = 512 / allocator->block_size;
+    
+    for (u16_t i = 0; i < nblocks - 1; ++i) {
+        u32_t offset_to_next = allocator->block_size << PAGE_ORDER;
+        pt->entries[i * allocator->block_size] = offset_to_next;
+    }
+
+    pdt->entries[pdt_offset(allocator->next_empty_pt)] = vm_pt_entry_create(pt_phys, VM_ALLOW_WRITE);
+
+    if (allocator->last_free_block == NULL) {
+        // Point the first free block to the first entry of the new PT we just created
+        allocator->first_free_block = allocator->next_empty_pt;
+        allocator->first_free_pt = pt;
+    } else {
+        // Point the former last free block to the first block of the newly allocated PT.
+        allocator->last_free_pt->entries[pt_offset(allocator->last_free_block)] = 
+            __pt_entry_for_blk_offset(allocator->last_free_block, allocator->next_empty_pt);
+    }
+
+    allocator->last_free_block = allocator->next_empty_pt + (511 << PAGE_ORDER);
+    allocator->last_free_pt = pt;
+    allocator->free_blocks += nblocks;
+    allocator->next_empty_pt += (512 << PAGE_ORDER);
+}
+
+void vm_init() {
+    phys_addr_t init_pml4t = __create_initial_vmspace();
+    write_cr3(init_pml4t);
+
+    // Initialize the VM page table allocator
+    pt_virt_allocator.block_size = 1;
+    pt_virt_allocator.zone_base = VM_REGION_PT;
+    pt_virt_allocator.shared_pdpt = kmap_pdpt;
+    
+    page_table_t *pt = pt_from_entry(pt_virt_allocator.shared_pdpt->entries[pdpt_offset(VM_REGION_PT)]);
+    pt = pt_from_entry(pt->entries[pdt_offset(VM_REGION_PT)]);
+    
+    u16_t first_free_idx = 0;
+    while (pt->entries[first_free_idx] & PT_PRESENT) {
+        ++first_free_idx;
+    }
+
+    pt_virt_allocator.first_free_pt = pt;
+    pt_virt_allocator.first_free_block = VM_REGION_PT + (first_free_idx << PAGE_ORDER);
+    pt_virt_allocator.next_empty_pt = VM_REGION_PT + (512 << PAGE_ORDER);
+
+    pt_virt_allocator.last_free_block = VM_REGION_HEAP + (511 << PAGE_ORDER);
+    pt_virt_allocator.last_free_pt = pt;
+}
+
+int vm_check_status(pt_entry_t entry, u8_t flags) {
     if (!(entry & PT_PRESENT))
     {
         return ERR_VM_UNMAPPED;
@@ -83,59 +201,49 @@ int vm_check_status(pt_entry_t entry, u8_t flags)
     return 0;
 }
 
-// Check if the requested virtual memory range can be mapped in exactly one pt.
-static inline int __check_vm_region_boundary(virt_addr_t virt_base, u16_t pages, u8_t flags)
-{
-    if (flags & VM_WRITE_GUARD)
-    {
-        ++pages;
-    }
-
-    if (pages > 512)
-    {
-        // If the number of pages exceeds 512 this condition is guaranteed.
-        return ERR_VM_BOUNDARY;
-    }
-
-    virt_addr_t virt_end = virt_base + (pages << PAGE_ORDER);
-
-    // Check if all offsets to the left of the page table offset are the same in both the base and end addresses.
-    // These offsets comprise of 27 bits and they start at bit (12 + 9).
-    size_t offset_mask = 0x8FFFFFFul << (12 + 9);
-
-    if (((size_t)virt_base & offset_mask) == ((size_t)virt_end & offset_mask))
-    {
-        return 0;
-    }
-
-    return ERR_VM_BOUNDARY;
-}
-
-pt_entry_t vm_pt_entry_create(phys_addr_t phys_addr, u8_t flags) {
+pt_entry_t vm_pt_entry_create(const phys_addr_t phys_addr, u8_t flags) {
     pt_entry_t entry = PT_PRESENT;
 
-    if (flags & VM_ALLOW_WRITE) {
+    if (flags & VM_ALLOW_WRITE)
+    {
         entry |= PT_WRITABLE;
     }
 
-    if (flags & VM_ALLOW_USER) {
+    if (flags & VM_ALLOW_USER)
+    {
         entry |= PT_USER_ACCESSIBLE;
     }
 
-    if (!(flags & VM_ALLOW_EXEC)) {
+    if (!(flags & VM_ALLOW_EXEC))
+    {
         entry |= PT_NO_EXECUTE;
     }
 
-    if (flags & VM_HUGEPAGE) {
+    if (flags & VM_HUGEPAGE)
+    {
         entry |= PT_HUGEPAGE;
     }
 
     return entry | (phys_addr & PAGE_ADDRESS_MASK);
 }
 
+static phys_addr_t __alloc_page_table() {
+    phys_addr_t frame = pfa_alloc_page();
+
+    // Add a new pt to the zone so there's space for the one we're trying to add
+    if (unlikely(pt_virt_allocator.free_blocks <= 2)) {
+        __allocate_block_pt(&pt_virt_allocator);
+    }
+
+    page_table_t *pt = vm_block_claim(&pt_virt_allocator, frame, VM_ALLOW_WRITE);
+    memset(pt, 0, 4096);
+    __mark_pt_page_info(frame, pt);
+
+    return frame;
+}
+
 // Map a page table entry to a physical address with page protection flags
-static inline void __map_phys_page(page_table_t *pt, size_t offset, phys_addr_t phys_addr, u8_t flags)
-{
+static inline void __map_phys_page(page_table_t *pt, size_t offset, phys_addr_t phys_addr, u8_t flags) {
     pt_entry_t entry = vm_pt_entry_create(phys_addr, flags);
 
     // Preserve bits that are not reserved
@@ -182,18 +290,19 @@ static page_table_t *__find_or_allocate_pt(
     virt_addr_t virt_addr,
     u8_t flags,
     int *error,
-    int *allocated_pages
-) 
+    int *allocated_pages)
 {
     *allocated_pages = 0;
     u8_t height = 3;
     int traversal_error = 0;
     page_table_t *pt_or_parent = __traverse_with_status(pml4t, virt_addr, flags, &height, &traversal_error);
 
-    if (traversal_error == ERR_VM_UNMAPPED) {
-        while (height > 0) {
+    if (traversal_error == ERR_VM_UNMAPPED)
+    {
+        while (height > 0)
+        {
             size_t offset = height_offset(virt_addr, height);
-            phys_addr_t new_page_table = _alloc_page_tables(1, flags);
+            phys_addr_t new_page_table = __alloc_page_table();
             ++(*allocated_pages);
             __map_phys_page(pt_or_parent, offset, new_page_table, flags);
 
@@ -201,7 +310,9 @@ static page_table_t *__find_or_allocate_pt(
 
             --height;
         }
-    } else if (traversal_error > 0) {
+    }
+    else if (traversal_error > 0)
+    {
         *error = traversal_error;
         return NULL;
     }
@@ -212,16 +323,18 @@ static page_table_t *__find_or_allocate_pt(
 
 static page_table_t *__find_pt_or_null(
     page_table_t *pml4t,
-    virt_addr_t virt_addr
-) {
+    virt_addr_t virt_addr)
+{
     page_table_t *table = pml4t;
 
     u8_t current_shift = PAGE_ORDER + 27;
-    for (u8_t i = 0; i < 3; ++i) {
+    for (u8_t i = 0; i < 3; ++i)
+    {
         size_t offset = (((size_t)virt_addr) >> current_shift) & 0x1FF;
         pt_entry_t entry = table->entries[offset];
 
-        if (!(entry & PT_PRESENT)) {
+        if (!(entry & PT_PRESENT))
+        {
             return NULL;
         }
 
@@ -232,347 +345,88 @@ static page_table_t *__find_pt_or_null(
     return table;
 }
 
-// This function will assume that the page tables are mapped and exist down to the PT level.
-// If not it will return an error code, else it will return 0.
-//
-// For simplicity sake this mapping will refuse to map a group of pages which do not map to the same
-// page table. Thus the max it can map at any given time is 512 pages assuming perfect alignment of the
-// base address. To map across many PTs make multiple calls.
-//
-// If this condition is not met ERR_VM_BOUNDARY will be returned.
-int vm_map_pages(phys_addr_t phys_base, u16_t pages, virt_addr_t virt_base, u8_t flags)
-{
-    if (__check_vm_region_boundary(virt_base, pages, flags))
+
+int vm_map_pages(page_table_t *pml4t, phys_addr_t phys_base, size_t pages, virt_addr_t virt_base, u8_t flags) {
+    size_t offset = pt_offset(virt_base);
+
+    phys_addr_t page = phys_base;
+    phys_addr_t end = phys_base + (pages << PAGE_ORDER);
+
+    while (page < end)
     {
-        return ERR_VM_BOUNDARY;
-    }
+        int err;
+        int allocated_pages;
+        page_table_t *pt = __find_or_allocate_pt(pml4t, virt_base, flags, &err, &allocated_pages);
 
-    page_table_t *pml4t = (page_table_t *)KPHYS_ADDR(read_cr3());
+        if (unlikely(err != 0))
+        {
+            return err;
+        }
 
-    int err;
-    u8_t depth = 3;
-    page_table_t *pt = __traverse_with_status(pml4t, virt_base, flags, &depth, &err);
+        int iterations_left = MIN((end - page) >> PAGE_ORDER, 512 - offset);
+        for (int i = 0; i < iterations_left; ++i)
+        {
+            // Map a page in this page table
+            pt->entries[offset + i] = vm_pt_entry_create(page, flags);
+            page += PAGE_SIZE;
+        }
 
-    size_t start_offset = pt_offset(virt_base);
-
-    for (size_t page = 0; page < pages; ++page)
-    {
-        size_t bytes_offset = page << 12;
-        __map_phys_page(pt, start_offset + page, phys_base + bytes_offset, flags);
-        flush_tlb(virt_base + bytes_offset);
-    }
-
-    if (flags & VM_WRITE_GUARD)
-    {
-        flags &= ~(VM_ALLOW_WRITE);
-        size_t bytes_offset = pages << 12;
-        __map_phys_page(pt, start_offset + pages, phys_base + bytes_offset, flags);
-        flush_tlb(virt_base + bytes_offset);
+        offset = 0;
     }
 
     return 0;
 }
 
-/* Given an allocated page for a page table (pt) it will initialize a page table along the path provided in the
-   path_offset virtual address with the provided page protection flags. */
-int vm_pt_init(page_table_t *pt, virt_addr_t path_offset, u8_t flags) {
-    page_table_t *pml4t = (page_table_t *)KPHYS_ADDR(read_cr3());
-    return vm_space_pt_init(pml4t, pt, path_offset, flags, 3);
-}
-
-/* Given a pointer to the 4th level PT, and an allocated page for a page table (pt) it will initialize a 
-   page table along the path provided in the path_offset virtual address with the provided page protection flags.
-   
-   When max_depth is set to 1 the PT must be a page directory pointer table, 2 corresponds to anything before a page directory
-   table and 3 corresponds to a page table. */
-int vm_space_pt_init(page_table_t *pml4t, page_table_t *pt, virt_addr_t path_offset, u8_t flags, u8_t max_depth) {
-    int err;
-    u8_t height = 3;
-    page_table_t *parent_table = __traverse_with_status(pml4t, path_offset, flags, &height, &err);
-
-    size_t offset;
-    // If height is 3 we reached a PDPT (depth 1)
-    size_t reached_depth = 4 - height;
-
-    if (err == 0 || reached_depth > max_depth)
-    {
-        return ERR_VM_ALREADY_MAPPED;
-    }
-
-    switch (height)
-    {
-    case 0:
-        return ERR_VM_ALREADY_MAPPED;
-    case 1:
-        offset = pdt_offset(path_offset);
-        break;
-    case 2:
-        offset = pdpt_offset(path_offset);
-        break;
-    case 3:
-        offset = pml4t_offset(path_offset);
-        break;
-    }
-
-    phys_addr_t phys_addr_for_pt = phys_addr_for_kphys(pt);
-    __map_phys_page(parent_table, offset, phys_addr_for_pt, flags);
-    memset(pt, 0, sizeof(page_table_t));
-
-    return 0;
-}
-
-phys_addr_t __alloc_phys_block(u8_t num_pages, u8_t flags) {
-    if (flags & VM_ALLOC_EARLY) {
-        return reserve_physmem_region(num_pages);
-    } else {
-        return phys_alloc(num_pages);
-    }
-}
-
-void __free_phys_block(pt_entry_t base_entry, u8_t num_pages) {
-    phys_addr_t block_base = phys_addr_for_entry(base_entry);
-
-    if (base_entry & PT_DATA_EARLY_ALLOC) {
-        
-    } else {
-        phys_free(block_base, num_pages);
-    }
-}
-
-void __shrink_phys_block(pt_entry_t base_entry, u8_t block_size, u8_t target_size) {
-    phys_addr_t block_base = phys_addr_for_entry(base_entry);
-
-    if (base_entry & PT_DATA_EARLY_ALLOC) {
-
-    } else {
-        phys_block_shrink(base_entry, block_size, target_size);
-    }
-}
-
-// Get the value of the flags for the page table which indicate how the mapped page of physical memory was allocated
-size_t __data_alloc_flags(size_t index_in_alloc, u8_t alloc_size, u8_t flags) {
-    size_t alloc_flags = 0;
-
-    if (flags & VM_ALLOC_EARLY) {
-        alloc_flags |= PT_DATA_EARLY_ALLOC;
-    }
-    
-    if (index_in_alloc > 0) {
-        alloc_flags |= PT_DATA_PAGE_BEHIND;
-    }
-
-    if (index_in_alloc < (alloc_size - 1)) {
-        alloc_flags |= PT_DATA_PAGE_AHEAD;
-    }
-
-    return alloc_flags;
-}
-
-// Extend a contiguous virtual memory allocation in a zone.
-// (Used for allocating heaps and other contiguous regions)
-virt_addr_t vmzone_extend(u8_t pages, u8_t flags, u16_t vmzone) {
-    page_table_t *pml4t = (page_table_t *)KPHYS_ADDR(read_cr3());
-
-    vmzone_t *zone = vmzone_info(vmzone);
-    if (!(zone->flags & VMZFLAG_CONTIGUOUS)) {
+virt_addr_t vm_block_claim(vmblock_alloc_t *allocator, const phys_addr_t block_address, u8_t flags) {
+    if (unlikely(allocator->free_blocks == 0)) {
         return NULL;
     }
 
-    virt_addr_t cursor = zone->cursor_addr;
+    virt_addr_t block = allocator->first_free_block;
+    size_t offset = pt_offset(block);
+    pt_entry_t entry = allocator->first_free_pt->entries[offset];
 
-    int err;
-    int allocated_pages;
-    page_table_t *pt = __find_or_allocate_pt(pml4t, cursor, flags, &err, &allocated_pages);
+    virt_addr_t next_free_block = next_free_entry(entry, allocator->first_free_block);
 
-    // Allocate a block of the current order
-    phys_addr_t phys_block = __alloc_phys_block(pages, flags);
-    size_t next_pt_offset = pt_offset(cursor);
-
-    for (size_t i = 0; i < pages; ++i) {
-        pt->entries[next_pt_offset] |= __data_alloc_flags(i, pages, flags);
-        __map_phys_page(pt, next_pt_offset++, phys_block, flags);
-
-        phys_block += 1ul << PAGE_ORDER;
-        cursor += 1ul << PAGE_ORDER;
-
-        if (next_pt_offset >= 512) {
-            // We've crossed a pt boundary, allocate another page table.
-            pt = __find_or_allocate_pt(pml4t, cursor, flags, &err, &allocated_pages);
-            next_pt_offset = 0;
-        }
+    // Map the pages
+    for (size_t i = 0; i < allocator->block_size; ++i) {
+        allocator->first_free_pt->entries[offset + i] = vm_pt_entry_create(block_address + (i << PAGE_ORDER), flags);
     }
 
-    virt_addr_t original_cursor = zone->cursor_addr;
-    zone->cursor_addr = cursor;
+    page_table_t *pt = pt_from_entry(allocator->shared_pdpt->entries[pdpt_offset(next_free_block)]);
+    pt = pt_from_entry(pt->entries[pdt_offset(next_free_block)]);
 
-    return original_cursor;
+    allocator->first_free_block = next_free_block;
+    allocator->first_free_pt = pt;
+    allocator->free_blocks -= 1;
+
+    if (unlikely(allocator->free_blocks == 0)) {
+        allocator->last_free_block = NULL;
+        allocator->last_free_pt = NULL;
+    }
+
+    return block;
 }
 
-int vmzone_shrink(u8_t pages, u16_t vmzone) {
-    page_table_t *pml4t = (page_table_t *)KPHYS_ADDR(read_cr3());
+void vm_block_release(vmblock_alloc_t *allocator, virt_addr_t block_address) {
+    page_table_t *pt = allocator->shared_pdpt->entries[pdpt_offset(block_address)];
+    pt = pt->entries[pdt_offset(block_address)];
+    size_t offset = pt_offset(block_address);
 
-    vmzone_t *zone = vmzone_info(vmzone);
-    if (!(zone->flags & VMZFLAG_CONTIGUOUS)) {
-        return ERR_VM_CONTIGUOUS;
+    // Drop references to the physical pages
+    for (size_t i = 0; i < allocator->block_size; ++i) {
+        page_info_t *page = page_for_entry(pt->entries[offset + i]);
+        drop_page_reference(page);
     }
 
-    // Cursor is the start of the first unmapped page, go back by one page.
-    virt_addr_t cursor = zone->cursor_addr;
-    cursor -= PAGE_SIZE;
-
-    page_table_t *pt = __find_pt_or_null(pml4t, cursor);
-    if (pt == NULL) {
-        return ERR_VM_UNMAPPED;
-    }
-
-    size_t next_offset = pt_offset(cursor);
-
-    u8_t current_block_size = 0;
-
-    // Don't clear the PTs just remove PT_PRESENT
-    for (u8_t i = 0; i < pages; ++i) {
-        pt->entries[next_offset] &= ~PT_PRESENT;
-        current_block_size += 1;
-        
-        if (!(pt->entries[next_offset] & PT_DATA_PAGE_BEHIND)) {
-            __free_phys_block(pt->entries[next_offset], current_block_size);
-            current_block_size = 0;
-        }
-
-        cursor -= PAGE_SIZE;
-
-        if (next_offset == 0) {
-            // We're crossing a page table boundary
-            page_table_t *pt = __find_pt_or_null(pml4t, cursor);
-            if (pt == NULL) {
-                return ERR_VM_UNMAPPED;
-            }
-
-            next_offset = 511;
-        } else {
-            --next_offset;
-        }
-    }
-
-    // Start of the first unmapped page.
-    zone->cursor_addr = cursor + PAGE_SIZE;
-
-    if (current_block_size > 0) {
-        // Figure out how big the current block is and shrink it by current_block_size
-        u8_t actual_block_size = current_block_size;
-        pt_entry_t current_entry;
-       
-        do {
-            actual_block_size += 1;
-            current_entry = pt->entries[next_offset];
-
-            cursor -= PAGE_SIZE;
-
-            if (next_offset == 0 && current_entry & PT_DATA_PAGE_BEHIND) {
-                // We're crossing a page table boundary
-                page_table_t *pt = __find_pt_or_null(pml4t, cursor);
-                if (pt == NULL) {
-                    return ERR_VM_UNMAPPED;
-                }
-
-                next_offset = 511;
-            } else {
-                --next_offset;
-            }
-        } while (current_entry & PT_DATA_PAGE_BEHIND);
-        
-        __shrink_phys_block(current_entry, actual_block_size, actual_block_size - current_block_size);
-    }
-
-    return 0;
-}
-
-void _prepare_block_pt(const vmzone_t * info, virt_addr_t base_pt_addr, page_table_t *pt) {
-    u8_t block_pages = 1 << info->block_order;
-
-    // The offset points to the next entry which is info->block_pages ahead
-    pt_entry_t entry = ((size_t)block_pages) << 12;
-
-    for (u16_t i = 0; i < 512; i += block_pages) {
-        pt->entries[i] |= entry;
-    }
-}
-
-// Allocate a block in a VMZFLAG_ALLOC_BLOCK virtual memory zone.
-__attribute__((weak))
-virt_addr_t vm_alloc_block(u8_t flags, u16_t vmzone) {
-    page_table_t *pml4t = KPHYS_ADDR(read_cr3());
-
-    // Check the cursor address of the zone which points to the first available block.
-    vmzone_t *zone = vmzone_info(vmzone);
-    virt_addr_t block_addr = zone->cursor_addr;
-    size_t block_pt_offset = pt_offset(block_addr);
-
-    int error;
-    int allocated_pages;
-
-    page_table_t *pt = __find_or_allocate_pt(pml4t, block_addr, flags, &error, &allocated_pages);
-
-    if (allocated_pages > 0) {
-        _prepare_block_pt(zone, block_pt_offset, pt);
-    }
-
-    pt_entry_t entry = pt->entries[block_pt_offset];
-
-    zone->cursor_addr = next_free_entry(entry, block_addr);
-    
-    size_t alloc_size = 1ul << zone->block_order;
-    phys_addr_t block_base = __alloc_phys_block(alloc_size, flags);
-
-    for (u8_t i = 0; i < alloc_size; ++i) {
-        pt_entry_t new_entry = vm_pt_entry_create(block_base, flags);
-        new_entry |= __data_alloc_flags(i, block_base, flags);
-        new_entry |= pt_alloc_flags(entry);
-
-        pt->entries[block_pt_offset + i] = new_entry;
-        block_base += PAGE_SIZE;
-    }
-
-    return block_addr;
-}
-
-// Free a block in a VMZFLAG_ALLOC_BLOCK virtual memory zone.
-int vm_free_block(virt_addr_t addr, u16_t vmzone) {
-    page_table_t *pml4t = KPHYS_ADDR(read_cr3());
-
-    vmzone_t *zone = vmzone_info(vmzone);
-
-    // Get the base of the allocated block.
-    addr = aligndown(addr, zone->block_order + PAGE_ORDER);
-
-    page_table_t *pt = __find_pt_or_null(pml4t, addr);
-    size_t offset = pt_offset(addr);
-    
-    if (pt == NULL) {
-        return ERR_VM_UNMAPPED;
-    }
-
-    // Free the physical memory for this block.
-    u8_t num_pages = 1 << zone->block_order;
-    __free_phys_block(pt->entries[offset], num_pages);
-
-    virt_addr_t next_free_addr = zone->cursor_addr;
-    size_t next_offset = (next_free_addr > addr) ? (next_free_addr - addr) : (addr - next_free_addr);
-
-    pt->entries[offset] &= ~(ENTRY_ADDR_MASK);
-    pt->entries[offset] |= next_offset;
-
-    if (next_free_addr < addr) {
-        pt->entries[offset] |= PT_OFFSET_NEGATIVE;
+    virt_addr_t next_free = allocator->first_free_block;
+    if (next_free - block_address >= 0) {
+        pt->entries[offset] = next_free - block_address;
     } else {
-        pt->entries[offset] &= ~PT_OFFSET_NEGATIVE;
+        pt->entries[offset] = (block_address - next_free) | PT_OFFSET_NEGATIVE;
     }
 
-    zone->cursor_addr = addr;
-
-    for (u8_t i = 0; i < num_pages; ++i) {
-        pt->entries[offset] &= ~PT_PRESENT;
-    }
-
-    return 0;
+    allocator->first_free_block = block_address;
+    allocator->first_free_pt = pt;
+    allocator->free_blocks += 1;
 }

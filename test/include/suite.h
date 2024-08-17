@@ -14,7 +14,10 @@
 #include <memory.h>
 #include <mm.h>
 
+#include <mm/page.h>
+
 u8_t __test_physical_mem[PHYS_MEM_SIZE];
+page_info_t __pages[PHYS_MEM_SIZE >> PAGE_ORDER];
 
 int suite_setup();
 int suite_teardown();

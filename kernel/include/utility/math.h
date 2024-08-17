@@ -52,6 +52,11 @@ static inline size_t next_power_of_two(u64_t x) {
     }
 }
 
+// Log2 which rounds down
+static inline u64_t log2(u64_t x) {
+    return 64 - __builtin_clzll(x) - 1;
+}
+
 // Truncates the first n bits of a number essentially rounding down to the nearest multiple of 2^n.
 // Use for n <= 63.
 static inline size_t trunc_n_bits(size_t x, u8_t n) {

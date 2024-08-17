@@ -70,7 +70,7 @@ static void __slab_init(const kmem_cache_t *const cache, slab_t *slab) {
 
 // Create a new slab of memory given some pages.
 static inline slab_t *__slab_create(const kmem_cache_t *const cache) {    
-    slab_t *new_slab = vm_alloc_block(VM_ALLOW_WRITE, VMZONE_KERNEL_SLAB);
+    slab_t *new_slab = NULL; // vm_alloc_block(VM_ALLOW_WRITE, VMZONE_KERNEL_SLAB);
     __slab_init(cache, new_slab);
     return new_slab;
 }

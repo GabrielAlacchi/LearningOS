@@ -14,7 +14,10 @@
 int suite_setup() {
     // 0 out the physical memory
     memset(__test_physical_mem, 0, PHYS_MEM_SIZE);
+    memset(__pages, 0, sizeof(__pages));
 
+    global_page_map = __pages;
+    global_page_map_end = __pages + (PHYS_MEM_SIZE >> PAGE_ORDER);
     setup_bootinfo();
 
     return 0;

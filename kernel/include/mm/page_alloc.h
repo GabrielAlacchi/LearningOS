@@ -3,8 +3,7 @@
 
 #include <mm.h>
 
-#define PFA_GENERAL 0x0
-#define PFA_DMA     0x1
+#define PFA_DMA 1
 
 // DMA zone stretches from 4MB to 16MB
 #define DMA_ZONE_BEGIN 0x400000

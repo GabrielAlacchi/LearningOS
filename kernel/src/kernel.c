@@ -17,12 +17,10 @@
 
 extern page_info_t *__freelist_head;
 
-
 typedef struct {
     u64_t a;
     u64_t b;
 } test_obj_t;
-
 
 int kernel_main() {
     set_cursor_pos(0, 0);

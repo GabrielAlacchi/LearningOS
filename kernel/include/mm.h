@@ -2,17 +2,7 @@
 #define _MM_ADDR_TYPES_H
 
 #include <types.h>
-
-typedef void * virt_addr_t;
-typedef size_t phys_addr_t;
-
-#define PAGE_SIZE  0x1000
-#define PAGE_ORDER 12
-
-// I will never use 0x0 in any legitimate way so it can be used as an error / NULL address.
-#define NULL 0x0
-
-#define KERNEL_VMA 0xFFFFFFFF80000000
+#include <mm/defs.h>
 
 // The first 2GB of physical memory is mapped into the high 2GB of the address space
 // like in Linux. This macro DRYs up the conversion from an address to this physical
